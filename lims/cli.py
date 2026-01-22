@@ -42,6 +42,37 @@ def parse_identifier(s: str) -> Tuple[str, Union[int, str]]:
   return ("external_id", s)
 
 
+
+def resolve_sample_id(conn, identifier: str) -> Optional[int]:
+  key, value = parse_identifier(identifier)
+  row = conn.execute(f"SELECT id FROM samples WHERE {key} = ?", (value,)).fetchone()
+  if not row:
+    return None
+  return int(row["id"])
+
+def log_sample_event(
+  conn,
+  sample_id: int,
+  event_type: str,
+  *,
+  from_container_id: Optional[int] = None,
+  to_container_id: Optional[int] = None,
+  old_status: Optional[str] = None,
+  new_status: Optional[str] = None,
+  note: Optional[str] = None,
+  occurred_at: Optional[str] = None,
+) -> None:
+  now = utc_now_iso()
+  when = occurred_at or now
+  conn.execute(
+    """
+    INSERT INTO sample_events
+      (sample_id, event_type, from_container_id, to_container_id, old_status, new_status, note, occurred_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+    (sample_id, event_type, from_container_id, to_container_id, old_status, new_status, note, when, now),
+  )
+
 def parse_container_identifier(s: str) -> Tuple[str, Union[int, str]]:
   if re.fullmatch(r"\d+", s):
     return ("id", int(s))
@@ -193,6 +224,27 @@ def cmd_sample_get(args: argparse.Namespace) -> int:
   return 0
 
 
+
+def cmd_sample_events(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+  sid = resolve_sample_id(conn, args.identifier)
+  if sid is None:
+    print("NOT FOUND")
+    return 2
+  rows = conn.execute(
+    """
+    SELECT *
+    FROM sample_events
+    WHERE sample_id = ?
+    ORDER BY occurred_at DESC, id DESC
+    LIMIT ?
+    """,
+    (sid, args.limit),
+  ).fetchall()
+  print_rows(rows)
+  return 0
+
 def cmd_sample_move(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -248,6 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
   sp_cget.set_defaults(fn=cmd_container_get)
 
   sp_sample = sub.add_parser("sample", help="Sample intake operations")
+  sample_sub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
   ssub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
 
   sp_add = ssub.add_parser("add", help="Add a sample")
@@ -268,6 +321,12 @@ def build_parser() -> argparse.ArgumentParser:
   sp_get = ssub.add_parser("get", help="Get a sample by ID or external_id")
   sp_get.add_argument("identifier", help="Numeric id or external_id")
   sp_get.set_defaults(fn=cmd_sample_get)
+
+  sp_events = sample_sub.add_parser("events", help="List audit events for a sample")
+  sp_events.add_argument("identifier", help="Numeric id or external_id")
+  sp_events.add_argument("--limit", type=int, default=50, help="Max rows (default: 50)")
+  sp_events.set_defaults(fn=cmd_sample_events)
+
 
   sp_move = ssub.add_parser("move", help="Move a sample to a container")
   sp_move.add_argument("sample", help="Sample id or external_id")
