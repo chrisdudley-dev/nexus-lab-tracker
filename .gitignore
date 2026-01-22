@@ -26,3 +26,7 @@ exports/
 
 # Local scratch/backup artifacts
 *.bak.*
+
+# LIMS local DB artifacts (keep local; do not commit)
+data/*.sqlite3
+data/*.db
