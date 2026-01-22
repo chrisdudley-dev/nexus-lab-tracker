@@ -301,9 +301,8 @@ def build_parser() -> argparse.ArgumentParser:
 
   sp_sample = sub.add_parser("sample", help="Sample intake operations")
   sample_sub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
-  ssub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
 
-  sp_add = ssub.add_parser("add", help="Add a sample")
+  sp_add = sample_sub.add_parser("add", help="Add a sample")
   sp_add.add_argument("--external-id", default=None, help="Optional external/sample accession ID")
   sp_add.add_argument("--specimen-type", required=True, help="Specimen type (e.g., blood, saliva, tissue)")
   sp_add.add_argument("--status", default="received", help="Status (default: received)")
@@ -312,13 +311,13 @@ def build_parser() -> argparse.ArgumentParser:
   sp_add.add_argument("--container", default=None, help="Assign to container (id or barcode)")
   sp_add.set_defaults(fn=cmd_sample_add)
 
-  sp_list = ssub.add_parser("list", help="List samples")
+  sp_list = sample_sub.add_parser("list", help="List samples")
   sp_list.add_argument("--status", default=None, help="Filter by status")
   sp_list.add_argument("--container", default=None, help="Filter by container (id or barcode)")
   sp_list.add_argument("--limit", type=int, default=25, help="Max rows (default: 25)")
   sp_list.set_defaults(fn=cmd_sample_list)
 
-  sp_get = ssub.add_parser("get", help="Get a sample by ID or external_id")
+  sp_get = sample_sub.add_parser("get", help="Get a sample by ID or external_id")
   sp_get.add_argument("identifier", help="Numeric id or external_id")
   sp_get.set_defaults(fn=cmd_sample_get)
 
@@ -328,7 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
   sp_events.set_defaults(fn=cmd_sample_events)
 
 
-  sp_move = ssub.add_parser("move", help="Move a sample to a container")
+  sp_move = sample_sub.add_parser("move", help="Move a sample to a container")
   sp_move.add_argument("sample", help="Sample id or external_id")
   sp_move.add_argument("--to", required=True, help="Target container id or barcode")
   sp_move.set_defaults(fn=cmd_sample_move)
