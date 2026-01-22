@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve repo root relative to this script (works on any machine/path).
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve repo root relative to this script, using physical path (no symlink ambiguity)
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 # Load per-machine overrides if present (NOT committed).
-# Note: .env is treated as "trusted local config" (shell-compatible KEY=VALUE lines).
+# .env should contain shell-compatible KEY=VALUE lines.
 if [[ -f "${REPO_ROOT}/.env" ]]; then
   set -a
   source "${REPO_ROOT}/.env"
