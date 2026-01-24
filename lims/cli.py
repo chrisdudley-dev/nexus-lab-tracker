@@ -275,6 +275,50 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
   return 0
 
 
+def cmd_sample_status(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+
+  sid = resolve_sample_id(conn, args.identifier)
+  if sid is None:
+    print("NOT FOUND")
+    return 2
+
+  sample = conn.execute("SELECT * FROM samples WHERE id = ?", (sid,)).fetchone()
+  if not sample:
+    print("NOT FOUND")
+    return 2
+
+  old = str(sample["status"])
+  new = str(args.to)
+
+  if old == new:
+    print(f"OK: sample already in status '{new}'")
+    print_rows([sample])
+    return 0
+
+  now = utc_now_iso()
+
+  # If a note is provided, stash it in a transient context table so the
+  # status_changed trigger can attach it to the generated audit event.
+  if args.note:
+    conn.execute(
+      "INSERT OR REPLACE INTO sample_event_context (sample_id, note, created_at) VALUES (?, ?, ?)",
+      (sid, args.note, now),
+    )
+
+  conn.execute(
+    "UPDATE samples SET status = ?, updated_at = ? WHERE id = ?",
+    (new, now, sid),
+  )
+  conn.commit()
+
+  row = conn.execute("SELECT * FROM samples WHERE id = ?", (sid,)).fetchone()
+  print("OK: sample status updated")
+  print_rows([row])
+  return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
   p = argparse.ArgumentParser(prog="lims", description="Minimal LIMS CLI (SQLite dev backend)")
   sub = p.add_subparsers(dest="cmd", required=True)
@@ -331,6 +375,12 @@ def build_parser() -> argparse.ArgumentParser:
   sp_move.add_argument("sample", help="Sample id or external_id")
   sp_move.add_argument("--to", required=True, help="Target container id or barcode")
   sp_move.set_defaults(fn=cmd_sample_move)
+
+  sp_status = sample_sub.add_parser("status", help="Change a sample's status")
+  sp_status.add_argument("identifier", help="Numeric id or external_id")
+  sp_status.add_argument("--to", required=True, help="New status value")
+  sp_status.add_argument("--note", default=None, help="Optional note to attach to the status change event")
+  sp_status.set_defaults(fn=cmd_sample_status)
 
   return p
 
