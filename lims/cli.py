@@ -263,6 +263,20 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
     return 2
 
   now = utc_now_iso()
+  # Clear any stale context row so a prior failed run cannot leak a note into
+  # this event.
+  conn.execute(
+    "DELETE FROM sample_event_context WHERE sample_id = ?",
+    (int(sample["id"]),),
+  )
+
+  # Optional note (consumed by trigger).
+  note = (getattr(args, "note", None) or "").strip()
+  if note:
+    conn.execute(
+      "INSERT OR REPLACE INTO sample_event_context (sample_id, note, created_at) VALUES (?, ?, ?)",
+      (int(sample["id"]), note, now),
+    )
   conn.execute(
     "UPDATE samples SET container_id = ?, updated_at = ? WHERE id = ?",
     (cid, now, int(sample["id"])),
@@ -299,12 +313,19 @@ def cmd_sample_status(args: argparse.Namespace) -> int:
 
   now = utc_now_iso()
 
-  # If a note is provided, stash it in a transient context table so the
-  # status_changed trigger can attach it to the generated audit event.
-  if args.note:
+  # Clear any stale context row so a prior failed run cannot leak a note into
+  # this event.
+  conn.execute(
+    "DELETE FROM sample_event_context WHERE sample_id = ?",
+    (sid,),
+  )
+
+  # Optional note (consumed by trigger).
+  note = (getattr(args, "note", None) or "").strip()
+  if note:
     conn.execute(
       "INSERT OR REPLACE INTO sample_event_context (sample_id, note, created_at) VALUES (?, ?, ?)",
-      (sid, args.note, now),
+      (sid, note, now),
     )
 
   conn.execute(
@@ -374,6 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
   sp_move = sample_sub.add_parser("move", help="Move a sample to a container")
   sp_move.add_argument("sample", help="Sample id or external_id")
   sp_move.add_argument("--to", required=True, help="Target container id or barcode")
+  sp_move.add_argument("--note", default=None, help="Optional note to attach to the move event")
   sp_move.set_defaults(fn=cmd_sample_move)
 
   sp_status = sample_sub.add_parser("status", help="Change a sample's status")
