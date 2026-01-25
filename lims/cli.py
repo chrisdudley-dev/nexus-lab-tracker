@@ -162,7 +162,7 @@ def cmd_container_add(args: argparse.Namespace) -> int:
 def cmd_container_list(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
-  sql = "SELECT * FROM containers ORDER BY created_at DESC"
+  sql = "SELECT * FROM containers ORDER BY created_at DESC, id DESC"
   params: List[Any] = []
   if args.limit:
     sql += " LIMIT ?"
@@ -302,7 +302,7 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
   sql = "SELECT * FROM samples"
   if where:
     sql += " WHERE " + " AND ".join(where)
-  sql += " ORDER BY received_at DESC"
+  sql += " ORDER BY received_at DESC, id DESC"
   if args.limit:
     sql += " LIMIT ?"
     params.append(args.limit)
