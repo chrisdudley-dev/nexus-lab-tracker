@@ -37,6 +37,7 @@ def print_rows(rows) -> None:
 
 
 def parse_identifier(s: str) -> Tuple[str, Union[int, str]]:
+  s = (s or "").strip()
   if re.fullmatch(r"\d+", s):
     return ("id", int(s))
   return ("external_id", s)
@@ -44,6 +45,7 @@ def parse_identifier(s: str) -> Tuple[str, Union[int, str]]:
 
 
 def resolve_sample_id(conn, identifier: str) -> Optional[int]:
+  identifier = (identifier or "").strip()
   key, value = parse_identifier(identifier)
   row = conn.execute(f"SELECT id FROM samples WHERE {key} = ?", (value,)).fetchone()
   if not row:
@@ -74,6 +76,7 @@ def log_sample_event(
   )
 
 def parse_container_identifier(s: str) -> Tuple[str, Union[int, str]]:
+  s = (s or "").strip()
   if re.fullmatch(r"\d+", s):
     return ("id", int(s))
   return ("barcode", s)
@@ -86,6 +89,7 @@ def generate_external_id(prefix: str = "DEV") -> str:
 
 
 def resolve_container_id(conn, identifier: str) -> Optional[int]:
+  identifier = (identifier or "").strip()
   key, value = parse_container_identifier(identifier)
   row = conn.execute(f"SELECT id FROM containers WHERE {key} = ?", (value,)).fetchone()
   if not row:
