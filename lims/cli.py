@@ -47,7 +47,12 @@ def parse_identifier(s: str) -> Tuple[str, Union[int, str]]:
 def resolve_sample_id(conn, identifier: str) -> Optional[int]:
   identifier = (identifier or "").strip()
   key, value = parse_identifier(identifier)
+
   row = conn.execute(f"SELECT id FROM samples WHERE {key} = ?", (value,)).fetchone()
+  if not row and key == "id":
+    # If numeric ID doesn't exist, treat original token as external_id.
+    row = conn.execute("SELECT id FROM samples WHERE external_id = ?", (identifier,)).fetchone()
+
   if not row:
     return None
   return int(row["id"])
@@ -91,7 +96,12 @@ def generate_external_id(prefix: str = "DEV") -> str:
 def resolve_container_id(conn, identifier: str) -> Optional[int]:
   identifier = (identifier or "").strip()
   key, value = parse_container_identifier(identifier)
+
   row = conn.execute(f"SELECT id FROM containers WHERE {key} = ?", (value,)).fetchone()
+  if not row and key == "id":
+    # If numeric ID doesn't exist, treat original token as barcode.
+    row = conn.execute("SELECT id FROM containers WHERE barcode = ?", (identifier,)).fetchone()
+
   if not row:
     return None
   return int(row["id"])
@@ -165,18 +175,20 @@ def cmd_container_list(args: argparse.Namespace) -> int:
 def cmd_container_get(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
-  key, value = parse_container_identifier(args.identifier)
-  row = conn.execute(f"SELECT * FROM containers WHERE {key} = ?", (value,)).fetchone()
+
+  cid = resolve_container_id(conn, args.identifier)
+  if cid is None:
+    print("NOT FOUND")
+    return 2
+
+  row = conn.execute("SELECT * FROM containers WHERE id = ?", (cid,)).fetchone()
   if not row:
     print("NOT FOUND")
     return 2
+
   print_rows([row])
   return 0
 
-
-# --------------
-# Sample commands
-# --------------
 def cmd_sample_add(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -303,15 +315,19 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
 def cmd_sample_get(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
-  key, value = parse_identifier(args.identifier)
-  row = conn.execute(f"SELECT * FROM samples WHERE {key} = ?", (value,)).fetchone()
+
+  sid = resolve_sample_id(conn, args.identifier)
+  if sid is None:
+    print("NOT FOUND")
+    return 2
+
+  row = conn.execute("SELECT * FROM samples WHERE id = ?", (sid,)).fetchone()
   if not row:
     print("NOT FOUND")
     return 2
+
   print_rows([row])
   return 0
-
-
 
 def cmd_sample_events(args: argparse.Namespace) -> int:
   conn = db.connect()
@@ -337,9 +353,13 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
 
-  # Resolve sample
-  key, value = parse_identifier(args.sample)
-  sample = conn.execute(f"SELECT * FROM samples WHERE {key} = ?", (value,)).fetchone()
+  # Resolve sample (supports numeric-looking external_id via id-first fallback)
+  sid = resolve_sample_id(conn, args.sample)
+  if sid is None:
+    print("NOT FOUND: sample")
+    return 2
+
+  sample = conn.execute("SELECT * FROM samples WHERE id = ?", (sid,)).fetchone()
   if not sample:
     print("NOT FOUND: sample")
     return 2
@@ -375,7 +395,6 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
   print("OK: sample moved")
   print_rows([row])
   return 0
-
 
 def cmd_sample_status(args: argparse.Namespace) -> int:
   conn = db.connect()
