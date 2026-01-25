@@ -107,13 +107,37 @@ def cmd_container_add(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
   now = utc_now_iso()
+
+  barcode_raw = getattr(args, "barcode", None)
+  barcode = (str(barcode_raw) if barcode_raw is not None else "").strip()
+  if not barcode:
+    print("ERROR: barcode is required")
+    return 2
+
+  kind_raw = getattr(args, "kind", None)
+  kind = (str(kind_raw) if kind_raw is not None else "").strip()
+  if not kind:
+    print("ERROR: kind is required")
+    return 2
+
+  location_raw = getattr(args, "location", None)
+  location = None
+  if location_raw is not None:
+    loc = str(location_raw).strip()
+    location = loc if loc else None
+
+  # Friendly uniqueness check (avoid barcodes that differ only by whitespace).
+  if conn.execute("SELECT 1 FROM containers WHERE barcode = ? LIMIT 1", (barcode,)).fetchone():
+    print(f"ERROR: container barcode already exists: '{barcode}'")
+    return 2
+
   cur = conn.cursor()
   cur.execute(
     """
     INSERT INTO containers (barcode, kind, location, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?)
     """,
-    (args.barcode, args.kind, args.location, now, now),
+    (barcode, kind, location, now, now),
   )
   conn.commit()
   cid = cur.lastrowid
@@ -121,8 +145,6 @@ def cmd_container_add(args: argparse.Namespace) -> int:
   print("OK: container created")
   print_rows([row])
   return 0
-
-
 def cmd_container_list(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -157,11 +179,63 @@ def cmd_sample_add(args: argparse.Namespace) -> int:
 
   now = utc_now_iso()
   received_at = args.received_at or now
-  external_id = args.external_id or generate_external_id("DEV")
+  if received_at is not None:
+    received_at = str(received_at).strip() or now
 
-  container_id: Optional[int] = None
-  if args.container:
-    container_id = resolve_container_id(conn, args.container)
+  specimen_type_raw = getattr(args, "specimen_type", None)
+  specimen_type = (str(specimen_type_raw) if specimen_type_raw is not None else "").strip()
+  if not specimen_type:
+    print("ERROR: specimen_type is required")
+    return 2
+
+  # Normalize + validate status at creation time to prevent "unknown current status" later.
+  status_raw = (str(getattr(args, "status", "received")) or "").strip().lower()
+  aliases = {
+    "registered": "received",
+    "testing": "processing",
+    "analysis": "analyzing",
+    "done": "completed",
+  }
+  status = aliases.get(status_raw, status_raw)
+  allowed = ("received", "processing", "analyzing", "completed")
+  if status not in set(allowed):
+    print(f"ERROR: invalid status '{getattr(args, 'status', '')}'. Allowed: " + ", ".join(allowed))
+    return 2
+
+  notes_raw = getattr(args, "notes", None)
+  notes = None
+  if notes_raw is not None:
+    s = str(notes_raw).strip()
+    notes = s if s else None
+
+  # External ID rules:
+  # - If explicitly provided, trim and require non-empty.
+  # - If not provided, auto-generate and ensure it doesn't collide.
+  external_id: str
+  provided = getattr(args, "external_id", None)
+  if provided is not None:
+    ext = str(provided).strip()
+    if not ext:
+      print("ERROR: external-id cannot be empty or whitespace")
+      return 2
+    external_id = ext
+    if conn.execute("SELECT 1 FROM samples WHERE external_id = ? LIMIT 1", (external_id,)).fetchone():
+      print(f"ERROR: sample external-id already exists: '{external_id}'")
+      return 2
+  else:
+    external_id = ""
+    for _ in range(10):
+      candidate = generate_external_id("DEV")
+      if not conn.execute("SELECT 1 FROM samples WHERE external_id = ? LIMIT 1", (candidate,)).fetchone():
+        external_id = candidate
+        break
+    if not external_id:
+      print("ERROR: could not generate a unique external-id; retry")
+      return 2
+
+  container_id = None
+  if getattr(args, "container", None):
+    container_id = resolve_container_id(conn, str(args.container).strip())
     if container_id is None:
       print(f"NOT FOUND: container '{args.container}'")
       return 2
@@ -172,7 +246,7 @@ def cmd_sample_add(args: argparse.Namespace) -> int:
     INSERT INTO samples (external_id, specimen_type, status, notes, received_at, created_at, updated_at, container_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """,
-    (external_id, args.specimen_type, args.status, args.notes, received_at, now, now, container_id),
+    (external_id, specimen_type, status, notes, received_at, now, now, container_id),
   )
   conn.commit()
   sample_id = cur.lastrowid
@@ -180,8 +254,6 @@ def cmd_sample_add(args: argparse.Namespace) -> int:
   print("OK: sample created")
   print_rows([row])
   return 0
-
-
 def cmd_sample_list(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
