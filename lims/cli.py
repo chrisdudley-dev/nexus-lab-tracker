@@ -265,8 +265,20 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
   where = []
   params: List[Any] = []
   if args.status:
+    status_raw = (str(args.status) or "").strip().lower()
+    aliases = {
+      "registered": "received",
+      "testing": "processing",
+      "analysis": "analyzing",
+      "done": "completed",
+    }
+    status = aliases.get(status_raw, status_raw)
+    allowed = ("received", "processing", "analyzing", "completed")
+    if status not in set(allowed):
+      print(f"ERROR: invalid status '{args.status}'. Allowed: " + ", ".join(allowed))
+      return 2
     where.append("status = ?")
-    params.append(args.status)
+    params.append(status)
   if args.container:
     cid = resolve_container_id(conn, args.container)
     if cid is None:
