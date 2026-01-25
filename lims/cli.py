@@ -83,8 +83,8 @@ def parse_container_identifier(s: str) -> Tuple[str, Union[int, str]]:
 
 
 def generate_external_id(prefix: str = "DEV") -> str:
-  # Deterministic-ish, human friendly
-  ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+  # Human-friendly and practically unique (microsecond precision UTC).
+  ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
   return f"{prefix}-{ts}"
 
 
