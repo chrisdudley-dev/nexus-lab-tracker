@@ -303,13 +303,46 @@ def cmd_sample_status(args: argparse.Namespace) -> int:
     print("NOT FOUND")
     return 2
 
-  old = str(sample["status"])
-  new = str(args.to)
+  old_raw = str(sample["status"])
+  old = (old_raw or "").strip().lower()
+  new_raw = (str(args.to) or "").strip().lower()
+
+  # Normalize common aliases to keep the CLI ergonomic while preserving a canonical set.
+  aliases = {
+    "registered": "received",
+    "testing": "processing",
+    "analysis": "analyzing",
+    "done": "completed",
+  }
+  new = aliases.get(new_raw, new_raw)
+
+  allowed = ("received", "processing", "analyzing", "completed")
+  allowed_set = set(allowed)
+
+  if new not in allowed_set:
+    print(f"ERROR: invalid status '{args.to}'. Allowed: " + ", ".join(allowed))
+    return 2
+
+  if old not in allowed_set:
+    print(f"ERROR: sample has unknown current status '{old_raw}'. Allowed: " + ", ".join(allowed))
+    return 2
+
+  transitions = {
+    "received": {"processing"},
+    "processing": {"analyzing", "completed"},
+    "analyzing": {"completed"},
+    "completed": set(),
+  }
 
   if old == new:
     print(f"OK: sample already in status '{new}'")
     print_rows([sample])
     return 0
+
+  if new not in transitions.get(old, set()):
+    nxt = ", ".join(sorted(transitions.get(old, set()))) or "(none)"
+    print(f"ERROR: invalid status transition '{old}' -> '{new}'. Allowed next: {nxt}")
+    return 2
 
   now = utc_now_iso()
 
