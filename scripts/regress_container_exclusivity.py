@@ -28,17 +28,19 @@ def main() -> int:
         must_ok(run(["./scripts/migrate.sh", "up"], env))
 
         sfx = str(int(time.time() * 1000))
-        tube = f"TUBE-{sfx}"
+        tube  = f"TUBE-{sfx}"
         tube2 = f"TUBE2-{sfx}"
-        vial = f"VIAL-{sfx}"
+        vial  = f"VIAL-{sfx}"
         plate = f"PLATE-{sfx}"
+        bag   = f"BAG-{sfx}"
 
         must_ok(run(["./scripts/lims.sh", "container", "add", "--barcode", tube,  "--kind", "tube",  "--location", "bench"], env))
         must_ok(run(["./scripts/lims.sh", "container", "add", "--barcode", tube2, "--kind", "tube",  "--location", "bench"], env))
         must_ok(run(["./scripts/lims.sh", "container", "add", "--barcode", vial,  "--kind", "vial",  "--location", "bench"], env))
         must_ok(run(["./scripts/lims.sh", "container", "add", "--barcode", plate, "--kind", "plate", "--location", "bench"], env))
+        must_ok(run(["./scripts/lims.sh", "container", "add", "--barcode", bag,  "--kind", "bag",  "--location", "bench"], env))
 
-        # tube exclusive: second sample into same tube should fail
+        # tube exclusive by default: second sample into same tube should fail
         sid1 = f"S-1-{sfx}"
         sid2 = f"S-2-{sfx}"
         must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid1, "--specimen-type", "blood", "--container", tube], env))
@@ -50,7 +52,7 @@ def main() -> int:
         must_ok(run(["./scripts/lims.sh", "sample", "move", sid1, "--to", tube2], env))
         must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid2, "--specimen-type", "blood", "--container", tube], env))
 
-        # vial exclusive too
+        # vial exclusive by default too
         sid3 = f"S-3-{sfx}"
         sid4 = f"S-4-{sfx}"
         must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid3, "--specimen-type", "blood", "--container", vial], env))
@@ -63,7 +65,13 @@ def main() -> int:
         must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid5, "--specimen-type", "blood", "--container", plate], env))
         must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid6, "--specimen-type", "blood", "--container", plate], env))
 
-        print("OK: tube/vial exclusivity enforced; plate remains non-exclusive.")
+        # bag (unknown kind) defaults non-exclusive: allow multiple
+        sid7 = f"S-7-{sfx}"
+        sid8 = f"S-8-{sfx}"
+        must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid7, "--specimen-type", "blood", "--container", bag], env))
+        must_ok(run(["./scripts/lims.sh", "sample", "add", "--external-id", sid8, "--specimen-type", "blood", "--container", bag], env))
+
+        print("OK: kind-defaults apply: tube/vial exclusive; plate/bag non-exclusive.")
         return 0
 
     finally:
