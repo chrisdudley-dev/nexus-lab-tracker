@@ -194,6 +194,64 @@ def cmd_container_get(args: argparse.Namespace) -> int:
   return 0
 
 
+
+
+
+def cmd_container_show(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+
+  cid = resolve_container_id(conn, args.identifier)
+  if cid is None:
+    print("NOT FOUND")
+    return 2
+
+  samples_limit = int(getattr(args, "samples_limit", 10))
+  if samples_limit < 0:
+    print("ERROR: --samples-limit must be >= 0")
+    return 2
+
+  # Pull container + computed occupancy_count in one row so print_rows works unchanged.
+  c = conn.execute(
+    """
+    SELECT
+      c.*,
+      (SELECT COUNT(1) FROM samples s WHERE s.container_id = c.id) AS occupancy_count
+    FROM containers c
+    WHERE c.id = ?
+    """,
+    (cid,),
+  ).fetchone()
+
+  if c is None:
+    print("NOT FOUND")
+    return 2
+
+  print("OK: container")
+  print_rows([c])
+
+  if samples_limit == 0:
+    return 0
+
+  rows = conn.execute(
+    """
+    SELECT id, external_id, specimen_type, status, received_at, created_at, updated_at
+    FROM samples
+    WHERE container_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+    """,
+    (cid, samples_limit),
+  ).fetchall()
+
+  print("Samples:")
+  if not rows:
+    print("(no samples)")
+  else:
+    print_rows(rows)
+
+  return 0
+
 def cmd_container_set_exclusive(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -689,6 +747,11 @@ def build_parser() -> argparse.ArgumentParser:
   sp_cget = csub.add_parser("get", help="Get a container by ID or barcode")
   sp_cget.add_argument("identifier", help="Numeric id or barcode")
   sp_cget.set_defaults(fn=cmd_container_get)
+
+  sp_cshow = csub.add_parser("show", help="Show container details including occupancy and samples")
+  sp_cshow.add_argument("identifier", help="Numeric id or barcode")
+  sp_cshow.add_argument("--samples-limit", type=int, default=10, help="Max samples to display (0 to suppress)")
+  sp_cshow.set_defaults(fn=cmd_container_show)
 
   sp_csex = csub.add_parser("set-exclusive", help="Set exclusive occupancy on/off for a container")
   sp_csex.add_argument("identifier", help="Numeric id or barcode")
