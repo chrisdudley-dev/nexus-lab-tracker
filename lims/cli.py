@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import argparse
 import json
 import re
@@ -576,8 +578,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
   parser = build_parser()
   args = parser.parse_args(argv)
-  return int(args.fn(args))
-
-
+  try:
+    return int(args.fn(args))
+  except sqlite3.IntegrityError as e:
+    print(f"ERROR: {e}")
+    return 2
 if __name__ == "__main__":
   raise SystemExit(main())
