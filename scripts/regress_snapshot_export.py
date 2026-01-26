@@ -24,10 +24,11 @@ with tempfile.TemporaryDirectory() as td:
     env["EXPORTS_DIR"] = str(exports)
 
     run(["./scripts/lims.sh", "init"], env)
-    run(["./scripts/lims.sh", "container", "add", "TUBE-A", "--kind", "tube"], env)
-    run(["./scripts/lims.sh", "sample", "add", "S-001", "--container", "TUBE-A"], env)
+    run(["./scripts/migrate.sh", "up"], env)
+    run(["./scripts/lims.sh", "container", "add", "--barcode", "TUBE-A", "--kind", "tube"], env)
+    run(["./scripts/lims.sh", "sample", "add", "--external-id", "S-001", "--specimen-type", "blood", "--container", "TUBE-A"], env)
 
-    out = run(["./scripts/snapshot_export.sh"], env)
+    out = run(["./scripts/lims.sh", "snapshot", "export"], env)
 
     tars = list(exports.glob("snapshot-*.tar.gz"))
     if len(tars) != 1:
