@@ -480,7 +480,8 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
   ensure_db(conn)
 
   apply_all = bool(getattr(args, "all", False))
-  kind = str(getattr(args, "kind", "")).strip().lower()
+  kind_raw = getattr(args, "kind", None)
+  kind = (str(kind_raw).strip().lower() if kind_raw is not None else "")
 
   if apply_all and kind:
     print("ERROR: provide either --all or a kind, not both")
@@ -488,6 +489,8 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
   if (not apply_all) and (not kind):
     print("ERROR: must provide a kind or --all")
     return 2
+
+  now = utc_now_iso()
 
   if apply_all:
     # Apply all defaults to matching container kinds, updating only drifted rows.
@@ -498,7 +501,8 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
         SELECT d.is_exclusive
         FROM container_kind_defaults d
         WHERE d.kind = lower(trim(containers.kind))
-      )
+      ),
+      updated_at = ?
       WHERE EXISTS (
         SELECT 1 FROM container_kind_defaults d
         WHERE d.kind = lower(trim(containers.kind))
@@ -508,35 +512,35 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
         FROM container_kind_defaults d
         WHERE d.kind = lower(trim(containers.kind))
       )
-      """
+      """,
+      (now,),
     )
     conn.commit()
-    n = cur.rowcount if cur.rowcount is not None else 0
+    n = int(cur.rowcount) if cur.rowcount is not None and cur.rowcount >= 0 else 0
     print(f"OK: applied kind defaults to {n} container(s)")
     return 0
 
-  # Apply one kind default to containers of that kind
-  d = conn.execute(
-    "SELECT kind, is_exclusive FROM container_kind_defaults WHERE kind = ?",
+  # Single-kind apply must be strict: require a default row to exist.
+  row = conn.execute(
+    "SELECT is_exclusive FROM container_kind_defaults WHERE kind = ?",
     (kind,),
   ).fetchone()
-  if d is None:
-    print("NOT FOUND")
+  if row is None:
+    print("ERROR: kind default not found")
     return 2
 
-  # Update only drifted rows for this kind.
+  val = int(row["is_exclusive"])
   cur = conn.execute(
     """
     UPDATE containers
-    SET is_exclusive = ?
+    SET is_exclusive = ?, updated_at = ?
     WHERE lower(trim(kind)) = ?
       AND is_exclusive != ?
     """,
-    (int(d["is_exclusive"]), kind, int(d["is_exclusive"])),
+    (val, now, kind, val),
   )
   conn.commit()
-
-  n = cur.rowcount if cur.rowcount is not None else 0
+  n = int(cur.rowcount) if cur.rowcount is not None and cur.rowcount >= 0 else 0
   print(f"OK: applied kind default to {n} container(s)")
   return 0
 
@@ -938,7 +942,7 @@ def build_parser() -> argparse.ArgumentParser:
   sp_kds.set_defaults(fn=cmd_container_kind_defaults_set)
 
   sp_kda = kdsub.add_parser("apply", help="Apply kind default to existing containers of that kind")
-  sp_kda.add_argument("kind", nargs="?", help="Kind to apply (omit when using --all)")
+  sp_kda.add_argument("kind", nargs="?", default=None, help="Kind to apply (omit when using --all)")
   sp_kda.add_argument("--all", action="store_true", help="Apply all kind defaults to all matching containers")
   sp_kda.set_defaults(fn=cmd_container_kind_defaults_apply)
   sp_sample = sub.add_parser("sample", help="Sample intake operations")
