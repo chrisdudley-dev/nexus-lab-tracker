@@ -748,6 +748,36 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
     print(f"NOT FOUND: container '{args.to}'")
     return 2
 
+  # Precheck (operator-grade): if target container is exclusive, block moves into occupied containers
+  # with a contextual error BEFORE SQLite raises IntegrityError.
+  cinfo = conn.execute(
+    "SELECT id, barcode, kind, COALESCE(is_exclusive, 0) AS is_exclusive FROM containers WHERE id = ?",
+    (cid,),
+  ).fetchone()
+
+  if cinfo is not None and int(cinfo["is_exclusive"]) == 1:
+    occ = conn.execute(
+      "SELECT COUNT(1) AS n FROM samples WHERE container_id = ? AND id != ?",
+      (cid, sid),
+    ).fetchone()["n"]
+
+    if int(occ) > 0:
+      occupants = conn.execute(
+        "SELECT id, external_id, specimen_type, status, received_at, updated_at "
+        "FROM samples WHERE container_id = ? AND id != ? "
+        "ORDER BY id ASC LIMIT 3",
+        (cid, sid),
+      ).fetchall()
+
+      print("ERROR: target container is exclusive and already occupied")
+      print(
+        f'Container: {cinfo["barcode"]} (id={cinfo["id"]}, kind={cinfo["kind"]}, '
+        f'exclusive=1, occupancy={int(occ)})'
+      )
+      print("Occupied by:")
+      print_rows(occupants)
+      print("Remedy: move existing sample(s) out of the container, or set container exclusive=off if policy allows.")
+      return 2
   now = utc_now_iso()
   # Clear any stale context row so a prior failed run cannot leak a note into
   # this event.
@@ -773,6 +803,7 @@ def cmd_sample_move(args: argparse.Namespace) -> int:
   print("OK: sample moved")
   print_rows([row])
   return 0
+
 
 def cmd_sample_status(args: argparse.Namespace) -> int:
   conn = db.connect()
