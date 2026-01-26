@@ -477,71 +477,67 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
 
+  apply_all = bool(getattr(args, "all", False))
   kind = str(getattr(args, "kind", "")).strip().lower()
-  if not kind:
-    print("ERROR: kind cannot be empty")
+
+  if apply_all and kind:
+    print("ERROR: provide either --all or a kind, not both")
+    return 2
+  if (not apply_all) and (not kind):
+    print("ERROR: must provide a kind or --all")
     return 2
 
-  row = conn.execute(
-    "SELECT is_exclusive FROM container_kind_defaults WHERE kind = ?",
+  if apply_all:
+    # Apply all defaults to matching container kinds, updating only drifted rows.
+    cur = conn.execute(
+      """
+      UPDATE containers
+      SET is_exclusive = (
+        SELECT d.is_exclusive
+        FROM container_kind_defaults d
+        WHERE d.kind = lower(trim(containers.kind))
+      )
+      WHERE EXISTS (
+        SELECT 1 FROM container_kind_defaults d
+        WHERE d.kind = lower(trim(containers.kind))
+      )
+      AND is_exclusive != (
+        SELECT d.is_exclusive
+        FROM container_kind_defaults d
+        WHERE d.kind = lower(trim(containers.kind))
+      )
+      """
+    )
+    conn.commit()
+    n = cur.rowcount if cur.rowcount is not None else 0
+    print(f"OK: applied kind defaults to {n} container(s)")
+    return 0
+
+  # Apply one kind default to containers of that kind
+  d = conn.execute(
+    "SELECT kind, is_exclusive FROM container_kind_defaults WHERE kind = ?",
     (kind,),
   ).fetchone()
-  if row is None:
-    print("ERROR: no default exists for this kind (use: container kind-defaults set <kind> on|off)")
+  if d is None:
+    print("NOT FOUND")
     return 2
 
-  val = int(row["is_exclusive"])
-
-  # Guardrail: if applying exclusive=on, refuse when any container of that kind holds > 1 sample.
-  if val == 1:
-    bad = conn.execute(
-      """
-      SELECT c.barcode AS barcode, COUNT(s.id) AS n
-      FROM containers c
-      JOIN samples s ON s.container_id = c.id
-      WHERE lower(trim(c.kind)) = ?
-      GROUP BY c.id
-      HAVING COUNT(s.id) > 1
-      ORDER BY n DESC, c.id ASC
-      LIMIT 10
-      """,
-      (kind,),
-    ).fetchall()
-
-    cnt_row = conn.execute(
-      """
-      SELECT COUNT(1) AS k
-      FROM (
-        SELECT c.id
-        FROM containers c
-        JOIN samples s ON s.container_id = c.id
-        WHERE lower(trim(c.kind)) = ?
-        GROUP BY c.id
-        HAVING COUNT(s.id) > 1
-      )
-      """,
-      (kind,),
-    ).fetchone()
-    bad_count = int(cnt_row["k"]) if cnt_row and cnt_row["k"] is not None else 0
-
-    if bad_count > 0:
-      print(f"ERROR: cannot apply exclusive=on to kind '{kind}': {bad_count} container(s) currently hold multiple samples")
-      if bad:
-        print("Examples:")
-        for r in bad:
-          print(f"- {r['barcode']} (samples={r['n']})")
-      return 2
-
-  now = utc_now_iso()
+  # Update only drifted rows for this kind.
   cur = conn.execute(
-    "UPDATE containers SET is_exclusive = ?, updated_at = ? WHERE lower(trim(kind)) = ?",
-    (val, now, kind),
+    """
+    UPDATE containers
+    SET is_exclusive = ?
+    WHERE lower(trim(kind)) = ?
+      AND is_exclusive != ?
+    """,
+    (int(d["is_exclusive"]), kind, int(d["is_exclusive"])),
   )
   conn.commit()
 
-  n = cur.rowcount if cur.rowcount is not None else -1
+  n = cur.rowcount if cur.rowcount is not None else 0
   print(f"OK: applied kind default to {n} container(s)")
   return 0
+
 
 def cmd_sample_add(args: argparse.Namespace) -> int:
   conn = db.connect()
@@ -940,9 +936,9 @@ def build_parser() -> argparse.ArgumentParser:
   sp_kds.set_defaults(fn=cmd_container_kind_defaults_set)
 
   sp_kda = kdsub.add_parser("apply", help="Apply kind default to existing containers of that kind")
-  sp_kda.add_argument("kind", help="Container kind to backfill")
+  sp_kda.add_argument("kind", nargs="?", help="Kind to apply (omit when using --all)")
+  sp_kda.add_argument("--all", action="store_true", help="Apply all kind defaults to all matching containers")
   sp_kda.set_defaults(fn=cmd_container_kind_defaults_apply)
-
   sp_sample = sub.add_parser("sample", help="Sample intake operations")
   sample_sub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
 
