@@ -162,12 +162,14 @@ def cmd_container_add(args: argparse.Namespace) -> int:
 def cmd_container_list(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
-  sql = "SELECT * FROM containers ORDER BY created_at DESC, id DESC"
-  params: List[Any] = []
-  if args.limit:
-    sql += " LIMIT ?"
-    params.append(args.limit)
-  rows = conn.execute(sql, params).fetchall()
+
+  limit = int(getattr(args, "limit", 25))
+  if limit < 0:
+    print("ERROR: limit must be >= 0")
+    return 2
+
+  sql = "SELECT * FROM containers ORDER BY created_at DESC, id DESC LIMIT ?"
+  rows = conn.execute(sql, (limit,)).fetchall()
   print_rows(rows)
   return 0
 
@@ -250,10 +252,16 @@ def cmd_sample_add(args: argparse.Namespace) -> int:
       return 2
 
   container_id = None
-  if getattr(args, "container", None):
-    container_id = resolve_container_id(conn, str(args.container).strip())
+  container_raw = getattr(args, "container", None)
+  if container_raw is not None:
+    ident = str(container_raw)
+    if not ident.strip():
+      print("ERROR: --container cannot be empty or whitespace")
+      return 2
+    ident = ident.strip()
+    container_id = resolve_container_id(conn, ident)
     if container_id is None:
-      print(f"NOT FOUND: container '{args.container}'")
+      print(f"NOT FOUND: container '{ident}'")
       return 2
 
   cur = conn.cursor()
@@ -274,6 +282,11 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
 
+  limit = int(getattr(args, "limit", 25))
+  if limit < 0:
+    print("ERROR: limit must be >= 0")
+    return 2
+
   where = []
   params: List[Any] = []
   if args.status:
@@ -291,10 +304,17 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
       return 2
     where.append("status = ?")
     params.append(status)
-  if args.container:
-    cid = resolve_container_id(conn, args.container)
+
+  container_raw = getattr(args, "container", None)
+  if container_raw is not None:
+    ident = str(container_raw)
+    if not ident.strip():
+      print("ERROR: --container cannot be empty or whitespace")
+      return 2
+    ident = ident.strip()
+    cid = resolve_container_id(conn, ident)
     if cid is None:
-      print(f"NOT FOUND: container '{args.container}'")
+      print(f"NOT FOUND: container '{ident}'")
       return 2
     where.append("container_id = ?")
     params.append(cid)
@@ -303,9 +323,8 @@ def cmd_sample_list(args: argparse.Namespace) -> int:
   if where:
     sql += " WHERE " + " AND ".join(where)
   sql += " ORDER BY received_at DESC, id DESC"
-  if args.limit:
-    sql += " LIMIT ?"
-    params.append(args.limit)
+  sql += " LIMIT ?"
+  params.append(limit)
 
   rows = conn.execute(sql, params).fetchall()
   print_rows(rows)
@@ -332,6 +351,12 @@ def cmd_sample_get(args: argparse.Namespace) -> int:
 def cmd_sample_events(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
+
+  limit = int(getattr(args, "limit", 50))
+  if limit < 0:
+    print("ERROR: limit must be >= 0")
+    return 2
+
   sid = resolve_sample_id(conn, args.identifier)
   if sid is None:
     print("NOT FOUND")
@@ -344,10 +369,11 @@ def cmd_sample_events(args: argparse.Namespace) -> int:
     ORDER BY occurred_at DESC, id DESC
     LIMIT ?
     """,
-    (sid, args.limit),
+    (sid, limit),
   ).fetchall()
   print_rows(rows)
   return 0
+
 
 def cmd_sample_move(args: argparse.Namespace) -> int:
   conn = db.connect()
