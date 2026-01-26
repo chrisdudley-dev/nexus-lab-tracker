@@ -252,6 +252,140 @@ def cmd_container_show(args: argparse.Namespace) -> int:
 
   return 0
 
+
+
+
+def cmd_container_audit(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+
+  limit = int(getattr(args, "limit", 50))
+  if limit < 0:
+    print("ERROR: --limit must be >= 0")
+    return 2
+
+  include_drift = bool(getattr(args, "include_drift", False))
+
+  # ---- Counts (always computed) ----
+  hard_count = conn.execute(
+    """
+    SELECT COUNT(1) AS n FROM (
+      SELECT c.id
+      FROM containers c
+      JOIN samples s ON s.container_id = c.id
+      WHERE c.is_exclusive = 1
+      GROUP BY c.id
+      HAVING COUNT(s.id) > 1
+    )
+    """
+  ).fetchone()["n"]
+
+  missing_count = conn.execute(
+    """
+    SELECT COUNT(1) AS n
+    FROM samples s
+    LEFT JOIN containers c ON c.id = s.container_id
+    WHERE s.container_id IS NOT NULL AND c.id IS NULL
+    """
+  ).fetchone()["n"]
+
+  drift_count = 0
+  if include_drift:
+    drift_count = conn.execute(
+      """
+      SELECT COUNT(1) AS n
+      FROM containers c
+      JOIN container_kind_defaults d
+        ON d.kind = lower(trim(c.kind))
+      WHERE COALESCE(c.is_exclusive, 0) != COALESCE(d.is_exclusive, 0)
+      """
+    ).fetchone()["n"]
+
+  # ---- Rows (only fetched when limit > 0) ----
+  hard = []
+  missing = []
+  drift = []
+
+  if limit > 0 and hard_count:
+    hard = conn.execute(
+      """
+      SELECT
+        c.id, c.barcode, c.kind, c.location, c.is_exclusive,
+        COUNT(s.id) AS occupancy_count,
+        c.updated_at
+      FROM containers c
+      JOIN samples s ON s.container_id = c.id
+      WHERE c.is_exclusive = 1
+      GROUP BY c.id
+      HAVING COUNT(s.id) > 1
+      ORDER BY occupancy_count DESC, c.id ASC
+      LIMIT ?
+      """,
+      (limit,),
+    ).fetchall()
+
+  if limit > 0 and missing_count:
+    missing = conn.execute(
+      """
+      SELECT
+        s.id, s.external_id, s.specimen_type, s.status,
+        s.container_id, s.updated_at
+      FROM samples s
+      LEFT JOIN containers c ON c.id = s.container_id
+      WHERE s.container_id IS NOT NULL AND c.id IS NULL
+      ORDER BY s.id ASC
+      LIMIT ?
+      """,
+      (limit,),
+    ).fetchall()
+
+  if include_drift and limit > 0 and drift_count:
+    drift = conn.execute(
+      """
+      SELECT
+        c.id, c.barcode, c.kind, c.is_exclusive,
+        d.is_exclusive AS kind_default_exclusive,
+        c.updated_at
+      FROM containers c
+      JOIN container_kind_defaults d
+        ON d.kind = lower(trim(c.kind))
+      WHERE COALESCE(c.is_exclusive, 0) != COALESCE(d.is_exclusive, 0)
+      ORDER BY c.id ASC
+      LIMIT ?
+      """,
+      (limit,),
+    ).fetchall()
+
+  print("== Container Audit ==")
+
+  # ---- Print helpers ----
+  def print_section(title: str, count: int, rows):
+    print(f"\n{title}")
+    if count == 0:
+      print("(none)")
+      return
+    if limit == 0:
+      print(f"(suppressed; {count} row(s))")
+      return
+    print_rows(rows)
+    if len(rows) < count:
+      print(f"(showing {len(rows)} of {count})")
+
+  print_section("[HARD] Exclusive containers with occupancy_count > 1", int(hard_count), hard)
+  print_section("[HARD] Samples referencing missing containers", int(missing_count), missing)
+
+  if include_drift:
+    print_section("[SOFT] Containers drifting from kind defaults", int(drift_count), drift)
+
+  hard_issues = int(hard_count) + int(missing_count)
+  if hard_issues > 0:
+    print(f"\nERROR: audit found {hard_issues} hard issue(s)")
+    return 2
+
+  print("\nOK: audit found no hard issues")
+  return 0
+
+
 def cmd_container_set_exclusive(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -752,6 +886,11 @@ def build_parser() -> argparse.ArgumentParser:
   sp_cshow.add_argument("identifier", help="Numeric id or barcode")
   sp_cshow.add_argument("--samples-limit", type=int, default=10, help="Max samples to display (0 to suppress)")
   sp_cshow.set_defaults(fn=cmd_container_show)
+
+  sp_caudit = csub.add_parser("audit", help="Audit containers/samples for exclusivity and referential integrity issues")
+  sp_caudit.add_argument("--limit", type=int, default=50, help="Max rows to display per section (0 suppresses lists)")
+  sp_caudit.add_argument("--include-drift", action="store_true", help="Also show containers drifting from kind defaults (soft)")
+  sp_caudit.set_defaults(fn=cmd_container_audit)
 
   sp_csex = csub.add_parser("set-exclusive", help="Set exclusive occupancy on/off for a container")
   sp_csex.add_argument("identifier", help="Numeric id or barcode")
