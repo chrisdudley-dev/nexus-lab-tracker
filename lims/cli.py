@@ -193,6 +193,46 @@ def cmd_container_get(args: argparse.Namespace) -> int:
   print_rows([row])
   return 0
 
+
+def cmd_container_set_exclusive(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+
+  cid = resolve_container_id(conn, args.identifier)
+  if cid is None:
+    print("NOT FOUND")
+    return 2
+
+  state_raw = getattr(args, "state", None)
+  state = (str(state_raw) if state_raw is not None else "").strip().lower()
+  if state == "on":
+    val = 1
+  elif state == "off":
+    val = 0
+  else:
+    print("ERROR: state must be 'on' or 'off'")
+    return 2
+
+  # Guardrail: do not allow enabling exclusivity if container already holds > 1 sample.
+  if val == 1:
+    row = conn.execute("SELECT COUNT(1) AS n FROM samples WHERE container_id = ?", (cid,)).fetchone()
+    n = int(row["n"]) if row and row["n"] is not None else 0
+    if n > 1:
+      print("ERROR: cannot set exclusive=on: container currently holds multiple samples")
+      return 2
+
+  now = utc_now_iso()
+  conn.execute(
+    "UPDATE containers SET is_exclusive = ?, updated_at = ? WHERE id = ?",
+    (val, now, cid),
+  )
+  conn.commit()
+
+  row = conn.execute("SELECT * FROM containers WHERE id = ?", (cid,)).fetchone()
+  print("OK: container updated")
+  print_rows([row])
+  return 0
+
 def cmd_sample_add(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -531,6 +571,11 @@ def build_parser() -> argparse.ArgumentParser:
   sp_cget = csub.add_parser("get", help="Get a container by ID or barcode")
   sp_cget.add_argument("identifier", help="Numeric id or barcode")
   sp_cget.set_defaults(fn=cmd_container_get)
+
+  sp_csex = csub.add_parser("set-exclusive", help="Set exclusive occupancy on/off for a container")
+  sp_csex.add_argument("identifier", help="Numeric id or barcode")
+  sp_csex.add_argument("state", choices=["on","off"], help="on => exclusive, off => non-exclusive")
+  sp_csex.set_defaults(fn=cmd_container_set_exclusive)
 
   sp_sample = sub.add_parser("sample", help="Sample intake operations")
   sample_sub = sp_sample.add_subparsers(dest="sample_cmd", required=True)
