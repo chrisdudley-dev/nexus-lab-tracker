@@ -493,7 +493,27 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
   now = utc_now_iso()
 
   if apply_all:
-    # Apply all defaults to matching container kinds, updating only drifted rows.
+    # Guardrail: refuse if applying defaults would flip any container to exclusive=1
+    # while it currently holds >1 sample.
+    bad = conn.execute(
+      """
+      SELECT COUNT(1) AS n FROM (
+        SELECT c.id
+        FROM containers c
+        JOIN samples s ON s.container_id = c.id
+        JOIN container_kind_defaults d ON d.kind = lower(trim(c.kind))
+        WHERE d.is_exclusive = 1
+          AND c.is_exclusive != 1
+        GROUP BY c.id
+        HAVING COUNT(s.id) > 1
+      )
+      """
+    ).fetchone()["n"]
+    bad = int(bad) if bad is not None else 0
+    if bad > 0:
+      print(f"ERROR: cannot apply --all: {bad} container(s) would become exclusive while holding multiple samples")
+      return 2
+
     cur = conn.execute(
       """
       UPDATE containers
@@ -530,6 +550,28 @@ def cmd_container_kind_defaults_apply(args: argparse.Namespace) -> int:
     return 2
 
   val = int(row["is_exclusive"])
+
+  # Guardrail: refuse if we would flip containers of this kind to exclusive=1
+  # while any of them currently holds >1 sample.
+  if val == 1:
+    bad = conn.execute(
+      """
+      SELECT COUNT(1) AS n FROM (
+        SELECT c.id
+        FROM containers c
+        JOIN samples s ON s.container_id = c.id
+        WHERE lower(trim(c.kind)) = ?
+        GROUP BY c.id
+        HAVING COUNT(s.id) > 1
+      )
+      """,
+      (kind,),
+    ).fetchone()["n"]
+    bad = int(bad) if bad is not None else 0
+    if bad > 0:
+      print(f"ERROR: cannot apply kind '{kind}': {bad} container(s) would become exclusive while holding multiple samples")
+      return 2
+
   cur = conn.execute(
     """
     UPDATE containers
