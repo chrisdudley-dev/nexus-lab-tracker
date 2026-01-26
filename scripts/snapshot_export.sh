@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Helper: returns 0 if table exists, 1 otherwise
+sqlite_table_exists() {
+  local db="$1" table="$2"
+  sqlite3 "$db" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$table' LIMIT 1;" | grep -q '^1$'
+}
+
+
 # Snapshot exporter for Nexus Lab Tracker (Model 1 scope):
 # - Creates a point-in-time SQLite backup
 # - Writes basic metadata and summaries
@@ -9,7 +16,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-: "${EXPORTS_DIR:=exports}"
+: "${EXPORTS_DIR:=${EXPORT_DIR:-exports}}"
 if [[ "$EXPORTS_DIR" != /* ]]; then
   EXPORTS_DIR="$REPO_ROOT/$EXPORTS_DIR"
 fi
@@ -31,6 +38,7 @@ fi
 TS_UTC="$(date -u +%Y%m%d-%H%M%SZ)"
 SNAP_DIR="$EXPORTS_DIR/snapshot-$TS_UTC"
 mkdir -p "$SNAP_DIR"
+: > "$SNAP_DIR/summary.txt"
 
 # Metadata
 DB_BYTES="$( (stat -c%s "$DB" 2>/dev/null) || (wc -c <"$DB") )"
@@ -65,6 +73,7 @@ fi
 sqlite3 "$DB" ".backup '$SNAP_DIR/lims.sqlite3'"
 sqlite3 "$SNAP_DIR/lims.sqlite3" ".schema" > "$SNAP_DIR/schema.sql"
 
+if sqlite_table_exists "$SNAP_DIR/lims.sqlite3" audit_events; then
 sqlite3 "$SNAP_DIR/lims.sqlite3" <<'SQL' > "$SNAP_DIR/summary.txt"
 .headers on
 .mode column
@@ -84,6 +93,10 @@ FROM audit_events
 ORDER BY occurred_at DESC, id DESC
 LIMIT 20;
 SQL
+else
+  # Model 1 scope: audit_events may not exist yet; skip quietly.
+  :
+fi
 
 # Include migrations and CLI scripts for forensic reproducibility
 mkdir -p "$SNAP_DIR/migrations" "$SNAP_DIR/scripts"
