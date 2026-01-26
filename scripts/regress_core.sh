@@ -16,7 +16,11 @@ run() {
   local s="$1"
   echo
   echo "-> $s"
-  "$s"
+  if [[ "$s" == *.py ]]; then
+    python3 "$s"
+  else
+    "$s"
+  fi
 }
 
 # 1) Input/CLI contract regressions (cheap, fast)
