@@ -443,7 +443,9 @@ def cmd_container_kind_defaults_set(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
 
-  kind = str(getattr(args, "kind", "")).strip().lower()
+  kind_raw = getattr(args, "kind", None)
+
+  kind = (str(kind_raw).strip().lower() if kind_raw is not None else "")
   if not kind:
     print("ERROR: kind cannot be empty")
     return 2
