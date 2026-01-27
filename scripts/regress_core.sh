@@ -30,6 +30,7 @@ main() {
   # 4) Operator visibility/auditability tools
   run ./scripts/regress_container_show.py
   run ./scripts/regress_container_audit.py
+  run ./scripts/regress_sample_report.py
 
   # 5) Sample move safety precheck
   run ./scripts/regress_sample_move_precheck.py
