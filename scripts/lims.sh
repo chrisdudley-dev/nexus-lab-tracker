@@ -41,7 +41,7 @@ if [[ "${1:-}" == "snapshot" ]]; then
             ;;
         esac
       done
-      if (( ${#include_samples[@]} > 0 )); then
+      if declare -p include_samples >/dev/null 2>&1 && (( ${#include_samples[@]} > 0 )); then
         export SNAPSHOT_INCLUDE_SAMPLES="${include_samples[*]}"
       fi
 
