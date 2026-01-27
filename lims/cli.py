@@ -906,6 +906,109 @@ def cmd_sample_report(args: argparse.Namespace) -> int:
   return 0
 
 
+def cmd_sample_export(args: argparse.Namespace) -> int:
+  conn = db.connect()
+  ensure_db(conn)
+
+  sid = resolve_sample_id(conn, args.identifier)
+  if sid is None:
+    print("NOT FOUND")
+    return 2
+
+  fmt = (args.format or "json").strip().lower()
+  if fmt not in ("json", "jsonl"):
+    print("ERROR: --format must be one of: json, jsonl")
+    return 2
+
+  limit = int(getattr(args, "limit", 50))
+  if limit < 0:
+    print("ERROR: limit must be >= 0")
+    return 2
+
+  row = conn.execute(
+    """
+    SELECT
+      s.*,
+      c.barcode AS container_barcode,
+      c.kind AS container_kind,
+      c.location AS container_location,
+      c.is_exclusive AS container_is_exclusive
+    FROM samples s
+    LEFT JOIN containers c ON c.id = s.container_id
+    WHERE s.id = ?
+    """,
+    (sid,),
+  ).fetchone()
+
+  if not row:
+    print("NOT FOUND")
+    return 2
+
+  events = conn.execute(
+    """
+    SELECT
+      e.*,
+      fc.barcode AS from_container_barcode,
+      tc.barcode AS to_container_barcode
+    FROM sample_events e
+    LEFT JOIN containers fc ON fc.id = e.from_container_id
+    LEFT JOIN containers tc ON tc.id = e.to_container_id
+    WHERE e.sample_id = ?
+    ORDER BY e.occurred_at DESC, e.id DESC
+    LIMIT ?
+    """,
+    (sid, limit),
+  ).fetchall()
+
+  sample_obj = dict(row)
+
+  container_obj = None
+  if row["container_id"] is not None:
+    container_obj = {
+      "id": row["container_id"],
+      "barcode": row["container_barcode"],
+      "kind": row["container_kind"],
+      "location": row["container_location"],
+      "is_exclusive": row["container_is_exclusive"],
+    }
+
+  for k in ["container_barcode", "container_kind", "container_location", "container_is_exclusive"]:
+    sample_obj.pop(k, None)
+  sample_obj["container"] = container_obj
+
+  ev_objs = []
+  for e in events:
+    eo = dict(e)
+    eo["from_container"] = (
+      {"id": eo.get("from_container_id"), "barcode": eo.get("from_container_barcode")}
+      if eo.get("from_container_id") is not None
+      else None
+    )
+    eo["to_container"] = (
+      {"id": eo.get("to_container_id"), "barcode": eo.get("to_container_barcode")}
+      if eo.get("to_container_id") is not None
+      else None
+    )
+    eo.pop("from_container_barcode", None)
+    eo.pop("to_container_barcode", None)
+    ev_objs.append(eo)
+
+  if fmt == "json":
+    obj = {
+      "generated_at": utc_now_iso(),
+      "sample": sample_obj,
+      "events": ev_objs,
+    }
+    print(json.dumps(obj, ensure_ascii=False))
+    return 0
+
+  # jsonl: first line is a sample envelope, then one line per event
+  print(json.dumps({"type": "sample", "generated_at": utc_now_iso(), "sample": sample_obj}, ensure_ascii=False))
+  for eo in ev_objs:
+    print(json.dumps({"type": "event", **eo}, ensure_ascii=False))
+  return 0
+
+
 def cmd_sample_move(args: argparse.Namespace) -> int:
   conn = db.connect()
   ensure_db(conn)
@@ -1155,6 +1258,13 @@ def build_parser() -> argparse.ArgumentParser:
   sp_report.add_argument("--limit", type=int, default=50, help="Max events (default: 50)")
   sp_report.add_argument("--json", action="store_true", help="Emit a single JSON object (sample + events)")
   sp_report.set_defaults(fn=cmd_sample_report)
+
+
+  sp_export = sample_sub.add_parser("export", help="Export a sample as JSON or JSONL (stdout)")
+  sp_export.add_argument("identifier", help="Numeric id or external_id")
+  sp_export.add_argument("--format", default="json", help="json|jsonl (default: json)")
+  sp_export.add_argument("--limit", type=int, default=50, help="Max events (default: 50)")
+  sp_export.set_defaults(fn=cmd_sample_export)
 
 
   sp_move = sample_sub.add_parser("move", help="Move a sample to a container")
