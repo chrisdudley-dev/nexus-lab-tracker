@@ -813,7 +813,7 @@ def cmd_sample_report(args: argparse.Namespace) -> int:
     LEFT JOIN containers fc ON fc.id = e.from_container_id
     LEFT JOIN containers tc ON tc.id = e.to_container_id
     WHERE e.sample_id = ?
-    ORDER BY occurred_at DESC, id DESC
+    ORDER BY e.occurred_at DESC, e.id DESC
     LIMIT ?
     """,
     (sid, limit),
