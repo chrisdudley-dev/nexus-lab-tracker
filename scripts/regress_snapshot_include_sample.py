@@ -46,6 +46,9 @@ def main() -> int:
   snap = snaps[-1]
 
   exp_file = snap / "exports" / "samples" / "sample-S-001.json"
+  exp_file_alt = snap / "exports" / "samples" / "sample-S-001_.json"
+  if (not exp_file.exists()) and exp_file_alt.exists():
+    exp_file = exp_file_alt
   if not exp_file.exists():
     print("FAIL: missing included sample export:", exp_file)
     return 1

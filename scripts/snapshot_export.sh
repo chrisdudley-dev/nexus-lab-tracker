@@ -78,7 +78,8 @@ if [[ -n "${SNAPSHOT_INCLUDE_SAMPLES:-}" ]]; then
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   mkdir -p "$SNAP_DIR/exports/samples"
   for ident in $SNAPSHOT_INCLUDE_SAMPLES; do
-    safe="$(echo "$ident" | tr -cs 'A-Za-z0-9._-' '_' )"
+    safe="$(printf %s "$ident" | tr -cs 'A-Za-z0-9._-' '_' )"
+    safe="${safe%_}"
     out="$SNAP_DIR/exports/samples/sample-$safe.json"
     if ! DB_PATH="$SNAP_DIR/lims.sqlite3" "$script_dir/lims.sh" sample export "$ident" --format json >"$out"; then
       echo "ERROR: failed to export sample '$ident' into snapshot" >&2
