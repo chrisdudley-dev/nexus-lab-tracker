@@ -31,6 +31,7 @@ main() {
   run ./scripts/regress_container_show.py
   run ./scripts/regress_container_audit.py
   run ./scripts/regress_sample_report.py
+  run ./scripts/regress_sample_export.py
 
   # 5) Sample move safety precheck
   run ./scripts/regress_sample_move_precheck.py
