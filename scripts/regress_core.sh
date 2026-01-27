@@ -34,8 +34,16 @@ main() {
   # 5) Sample move safety precheck
   run ./scripts/regress_sample_move_precheck.py
 
-  # 6) Snapshot export
+  # 6) Snapshot export + restore (round-trip)
   run ./scripts/regress_snapshot_export.py
+  run ./scripts/regress_snapshot_restore.py
+  run ./scripts/regress_snapshot_verify.py
+  run ./scripts/regress_snapshot_doctor.py
+  run ./scripts/regress_snapshot_diff.py
+  run ./scripts/regress_snapshot_latest.py
+  run ./scripts/regress_snapshot_diff_latest.py
+  run ./scripts/regress_snapshot_prune.py
+  run ./scripts/regress_snapshot_gc.py
 
   echo
   echo "OK: core regressions all green."
