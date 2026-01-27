@@ -71,6 +71,21 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
 fi
 
 sqlite3 "$DB" ".backup '$SNAP_DIR/lims.sqlite3'"
+
+# Optional: include sample export artifacts inside the snapshot bundle.
+# Identifiers are space-delimited in SNAPSHOT_INCLUDE_SAMPLES (set by scripts/lims.sh).
+if [[ -n "${SNAPSHOT_INCLUDE_SAMPLES:-}" ]]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  mkdir -p "$SNAP_DIR/exports/samples"
+  for ident in $SNAPSHOT_INCLUDE_SAMPLES; do
+    safe="$(echo "$ident" | tr -cs 'A-Za-z0-9._-' '_' )"
+    out="$SNAP_DIR/exports/samples/sample-$safe.json"
+    if ! DB_PATH="$SNAP_DIR/lims.sqlite3" "$script_dir/lims.sh" sample export "$ident" --format json >"$out"; then
+      echo "ERROR: failed to export sample '$ident' into snapshot" >&2
+      exit 2
+    fi
+  done
+fi
 sqlite3 "$SNAP_DIR/lims.sqlite3" ".schema" > "$SNAP_DIR/schema.sql"
 
 if sqlite_table_exists "$SNAP_DIR/lims.sqlite3" audit_events; then

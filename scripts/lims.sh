@@ -5,18 +5,34 @@ set -euo pipefail
 if [[ "${1:-}" == "snapshot" ]]; then
   shift || true
   sub="${1:-}"
+  if [[ -z "$sub" || "$sub" == "-h" || "$sub" == "--help" ]]; then
+    echo "Usage: ./scripts/lims.sh snapshot <export|restore|verify|doctor> [args]"
+    echo "Try:   ./scripts/lims.sh snapshot export -h"
+    exit 0
+  fi
   case "$sub" in
     export)
       shift || true
       while [[ $# -gt 0 ]]; do
+        include_samples=()
         case "$1" in
           --exports-dir|--exports|--out)
             [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }
             export EXPORTS_DIR="$2"
             shift 2
             ;;
+            --include-sample)
+              [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }
+              s="$2"
+              s="${s#"${s%%[![:space:]]*}"}"
+              s="${s%"${s##*[![:space:]]}"}"
+              [[ -n "$s" ]] || { echo "ERROR: --include-sample must not be blank" >&2; exit 2; }
+              [[ "$s" != *[[:space:]]* ]] || { echo "ERROR: --include-sample must not contain spaces" >&2; exit 2; }
+              include_samples+=("$s")
+              shift 2
+              ;;
           -h|--help)
-            echo "Usage: ./scripts/lims.sh snapshot export [--exports-dir PATH]"
+            echo "Usage: ./scripts/lims.sh snapshot export [--exports-dir PATH] [--include-sample ID]..."
             exit 0
             ;;
           *)
@@ -25,6 +41,10 @@ if [[ "${1:-}" == "snapshot" ]]; then
             ;;
         esac
       done
+      if (( ${#include_samples[@]} > 0 )); then
+        export SNAPSHOT_INCLUDE_SAMPLES="${include_samples[*]}"
+      fi
+
       exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_export.sh"
       ;;
 
