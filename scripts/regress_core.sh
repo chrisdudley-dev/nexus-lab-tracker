@@ -39,6 +39,7 @@ main() {
 
   # 6) Snapshot export + restore (round-trip)
   run ./scripts/regress_snapshot_export.py
+  run ./scripts/regress_snapshot_manifest.py
   run ./scripts/regress_snapshot_restore.py
   run ./scripts/regress_snapshot_verify.py
   run ./scripts/regress_snapshot_doctor.py
