@@ -81,7 +81,11 @@ if [[ -n "${SNAPSHOT_INCLUDE_SAMPLES:-}" ]]; then
     safe="$(printf %s "$ident" | tr -cs 'A-Za-z0-9._-' '_' )"
     safe="${safe%_}"
     out="$SNAP_DIR/exports/samples/sample-$safe.json"
-    if ! DB_PATH="$SNAP_DIR/lims.sqlite3" "$script_dir/lims.sh" sample export "$ident" --format json >"$out"; then
+    tmp_out="$(mktemp "${out}.tmp.XXXXXX")"
+    if DB_PATH="$SNAP_DIR/lims.sqlite3" "$script_dir/lims.sh" sample export "$ident" --format json >"$tmp_out"; then
+      mv -f "$tmp_out" "$out"
+    else
+      rm -f "$tmp_out"
       echo "ERROR: failed to export sample '$ident' into snapshot" >&2
       exit 2
     fi
