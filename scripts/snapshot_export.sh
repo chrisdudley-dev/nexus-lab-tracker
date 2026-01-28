@@ -129,3 +129,75 @@ tar -czf "$TARBALL" -C "$EXPORTS_DIR" "snapshot-$TS_UTC"
 
 echo "OK: wrote snapshot directory: $SNAP_DIR"
 echo "OK: wrote artifact:          $TARBALL"
+
+# ---- Snapshot manifest (self-describing artifact + integrity hashes) ----
+manifest="$SNAP_DIR/manifest.json"
+
+# Best-effort git commit for provenance (empty if not available)
+# Avoid relying on script_dir (may be unset); compute repo root from this script's location.
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+git_commit=""
+if command -v git >/dev/null 2>&1; then
+  if git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git_commit="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+  fi
+fi
+
+created_at_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+db_path="$SNAP_DIR/lims.sqlite3"
+db_sha256="$(sha256sum "$db_path" | awk '{print $1}')"
+
+# Best-effort tarball location (sibling of snapshot dir)
+tar_path=""
+tar_sha256=""
+if [[ -f "${SNAP_DIR}.tar.gz" ]]; then
+  tar_path="${SNAP_DIR}.tar.gz"
+  tar_sha256="$(sha256sum "$tar_path" | awk '{print $1}')"
+fi
+
+export created_at_utc git_commit db_sha256 tar_path tar_sha256 SNAPSHOT_INCLUDE_SAMPLES
+
+python3 - "$manifest" <<'PYMAN'
+import hashlib, json, os, sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+snap_dir = manifest_path.parent
+
+def sha256_file(p: Path) -> str:
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+doc = {
+    "schema": "nexus_snapshot_manifest",
+    "schema_version": 1,
+    "created_at_utc": os.environ.get("created_at_utc", ""),
+    "git_commit": os.environ.get("git_commit", ""),
+    "snapshot_dir": str(snap_dir),
+    "db": {"path": str(snap_dir / "lims.sqlite3"), "sha256": os.environ.get("db_sha256", "")},
+    "tarball": None,
+    "included_exports": {"samples": []},
+}
+
+tar_path = os.environ.get("tar_path", "")
+tar_sha  = os.environ.get("tar_sha256", "")
+if tar_path and tar_sha:
+    doc["tarball"] = {"path": tar_path, "sha256": tar_sha}
+
+samples_dir = snap_dir / "exports" / "samples"
+for ident in [x for x in os.environ.get("SNAPSHOT_INCLUDE_SAMPLES", "").split() if x.strip()]:
+    safe = ident.strip().replace("/", "_")
+    fp = samples_dir / f"sample-{safe}.json"
+    entry = {"external_id": ident, "path": str(fp)}
+    if fp.exists():
+        entry["sha256"] = sha256_file(fp)
+    else:
+        entry["sha256"] = None
+        entry["missing"] = True
+    doc["included_exports"]["samples"].append(entry)
+
+manifest_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PYMAN
