@@ -30,16 +30,38 @@ def parse_multiline_json(text: str):
     return None
   return json.loads(text[s:e+1])
 
-def find_snapshot_db(artifact: Path, tmp: Path) -> Path:
+def _safe_extractall(tf: tarfile.TarFile, dest: Path) -> None:
+  dest_r = dest.resolve()
+  for mem in tf.getmembers():
+    name = mem.name
+    # Basic path traversal guards
+    if name.startswith(("/", "\\")):
+      raise ValueError(f"unsafe tar member path (absolute): {name}")
+    parts = Path(name).parts
+    if ".." in parts:
+      raise ValueError(f"unsafe tar member path (..): {name}")
+    out = (dest_r / name).resolve()
+    try:
+      out.relative_to(dest_r)
+    except Exception:
+      raise ValueError(f"unsafe tar member path (escapes dest): {name}")
+  tf.extractall(path=dest_r)
+
+def resolve_snapshot_context(artifact: Path, tmp: Path):
+  """
+  Returns (src_db, snap_dir, tarball_path)
+    - src_db: path to lims.sqlite3
+    - snap_dir: directory containing lims.sqlite3 (may be None for direct sqlite3 artifacts)
+    - tarball_path: original tarball path if artifact is tarball else None
+  """
   if artifact.is_dir():
     direct = artifact / "lims.sqlite3"
     if direct.exists():
-      return direct
+      return direct, artifact, None
     found = sorted(artifact.glob("**/lims.sqlite3"))
-    # keep it shallow-ish: accept only within 2 levels to avoid surprises
-    found = [p for p in found if len(p.relative_to(artifact).parts) <= 3]
+    found = [pp for pp in found if len(pp.relative_to(artifact).parts) <= 3]
     if len(found) == 1:
-      return found[0]
+      return found[0], found[0].parent, None
     if len(found) == 0:
       raise ValueError("no lims.sqlite3 found in directory artifact")
     raise ValueError("multiple lims.sqlite3 found in directory artifact (ambiguous)")
@@ -47,18 +69,20 @@ def find_snapshot_db(artifact: Path, tmp: Path) -> Path:
   if artifact.is_file():
     name = artifact.name
     if name.endswith((".tar.gz", ".tgz")):
+      extract_root = tmp / "snapshot_extract"
+      extract_root.mkdir(parents=True, exist_ok=True)
       with tarfile.open(artifact, "r:gz") as tf:
-        members = [m for m in tf.getmembers() if m.name.endswith("lims.sqlite3")]
-        if len(members) != 1:
-          raise ValueError(f"expected exactly 1 lims.sqlite3 in tarball, found {len(members)}")
-        tf.extract(members[0], path=tmp)
-        return (tmp / members[0].name).resolve()
+        _safe_extractall(tf, extract_root)
+      found = sorted(extract_root.rglob("lims.sqlite3"))
+      if len(found) != 1:
+        raise ValueError(f"expected exactly 1 lims.sqlite3 in tarball, found {len(found)}")
+      src_db = found[0].resolve()
+      return src_db, src_db.parent, artifact
 
     if name.endswith(".sqlite3") or name == "lims.sqlite3":
-      return artifact
+      return artifact, None, None
 
   raise ValueError("unsupported artifact type; pass snapshot dir, snapshot-*.tar.gz, or lims.sqlite3")
-
 def table_exists(conn: sqlite3.Connection, table: str) -> bool:
   cur = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (table,))
   return cur.fetchone() is not None
@@ -108,13 +132,27 @@ def main():
   with tempfile.TemporaryDirectory() as td:
     td = Path(td)
     try:
-      src_db = find_snapshot_db(artifact, td)
+      src_db, snap_dir, tarball_path = resolve_snapshot_context(artifact, td)
     except Exception as ex:
       report["notes"].append(f"artifact_resolution_error: {ex}")
       print(json.dumps(report, separators=(",", ":")))
       sys.exit(2)
 
     report["resolved_snapshot_db"] = str(src_db)
+
+    report["resolved_snapshot_dir"] = (str(snap_dir) if snap_dir is not None else None)
+    report["resolved_tarball"] = (str(tarball_path) if tarball_path is not None else None)
+
+    # Validate manifest (if present). Uses portable validator to support extracted tarballs / moved dirs.
+    validator = REPO / "scripts" / "snapshot_validate_manifest.py"
+    if snap_dir is not None and validator.exists():
+      cmd = [sys.executable, str(validator), "--snap-dir", str(snap_dir), "--check-included"]
+      if tarball_path is not None:
+        cmd += ["--tarball", str(tarball_path)]
+      r = subprocess.run(cmd, cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      if r.returncode != 0:
+        msg = (r.stderr.strip() or r.stdout.strip() or f"rc={r.returncode}")
+        raise RuntimeError(f"manifest_validation_failed: {msg}")
 
     work_db = td / "doctor.sqlite3"
     shutil.copy2(src_db, work_db)
