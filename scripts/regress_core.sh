@@ -58,3 +58,6 @@ main "$@"
 
 # PASTE_GARBAGE_GUARD
 bash scripts/regress_no_paste_garbage.sh
+
+# API_REGRESS
+python3 scripts/regress_api_snapshot_export_verify.py
