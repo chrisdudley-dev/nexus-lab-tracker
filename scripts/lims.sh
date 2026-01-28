@@ -13,8 +13,8 @@ if [[ "${1:-}" == "snapshot" ]]; then
   case "$sub" in
     export)
       shift || true
+      include_samples=()
       while [[ $# -gt 0 ]]; do
-        include_samples=()
         case "$1" in
           --exports-dir|--exports|--out)
             [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }

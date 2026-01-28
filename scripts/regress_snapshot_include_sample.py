@@ -26,10 +26,12 @@ def main() -> int:
   run(["./scripts/migrate.sh", "up"], env)
 
   run(["./scripts/lims.sh", "container", "add", "--barcode", "TUBE-1", "--kind", "tube", "--location", "bench-A"], env)
+  run(["./scripts/lims.sh", "container", "add", "--barcode", "TUBE-2", "--kind", "tube", "--location", "bench-A"], env)
   run(["./scripts/lims.sh", "sample", "add", "--external-id", "S-001", "--specimen-type", "saliva", "--container", "TUBE-1"], env)
+  run(["./scripts/lims.sh", "sample", "add", "--external-id", "S-002", "--specimen-type", "blood", "--container", "TUBE-2"], env)
 
   p = run(
-    ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", str(exports_dir), "--include-sample", "S-001"],
+    ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", str(exports_dir), "--include-sample", "S-001", "--include-sample", "S-002"],
     env,
     check=False,
   )
@@ -46,7 +48,15 @@ def main() -> int:
   snap = snaps[-1]
 
   exp_file = snap / "exports" / "samples" / "sample-S-001.json"
+  exp_file2 = snap / "exports" / "samples" / "sample-S-002.json"
   if not exp_file.exists():
+    print("FAIL: missing included sample export:", exp_file)
+    return 1
+
+  if not exp_file2.exists():
+    print("FAIL: missing included sample export:", exp_file2)
+    return 1
+
     print("FAIL: missing included sample export:", exp_file)
     return 1
 
