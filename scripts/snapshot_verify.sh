@@ -1,9 +1,100 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# --json flag shim (sets SNAPSHOT_JSON=1)
+# Accept --json as an alias for SNAPSHOT_JSON=1 (and remove it from args)
+__json_req=0
+__keep=()
+for __a in "$@"; do
+  if [[ "$__a" == "--json" ]]; then
+    __json_req=1
+  else
+    __keep+=("$__a")
+  fi
+done
+set -- "${__keep[@]}"
+unset __keep __a
+if [[ "$__json_req" == "1" ]]; then
+  export SNAPSHOT_JSON=1
+fi
+unset __json_req
+
+# JSON MODE (snapshot_verify)
+# If SNAPSHOT_JSON=1, redirect human logs to stderr and emit exactly one JSON object to stdout.
+JSON_MODE="${SNAPSHOT_JSON:-0}"
+if [[ "${JSON_MODE}" == "1" ]]; then
+  exec 3>&1
+  exec 1>&2
+fi
+
+emit_json() {
+  [[ "${JSON_MODE}" == "1" ]] || return 0
+  SNAPSHOT_VERIFY_OK="$1" \
+  SNAPSHOT_VERIFY_RC="$2" \
+  SNAPSHOT_VERIFY_MSG="${3:-}" \
+  SNAPSHOT_VERIFY_ARTIFACT="${SNAPSHOT_ARTIFACT:-${ART:-}}" \
+  SNAPSHOT_VERIFY_DB="${SRC_DB:-}" \
+  python3 -c 'import os,json,datetime
+ok=os.environ.get("SNAPSHOT_VERIFY_OK","false").lower() in ("1","true","yes")
+rc=int(os.environ.get("SNAPSHOT_VERIFY_RC","2"))
+msg=os.environ.get("SNAPSHOT_VERIFY_MSG") or None
+art=os.environ.get("SNAPSHOT_VERIFY_ARTIFACT") or None
+db=os.environ.get("SNAPSHOT_VERIFY_DB") or None
+doc={
+ "schema":"nexus_snapshot_verify_result",
+ "schema_version":1,
+ "ok":ok,
+ "rc":rc,
+ "message":msg,
+ "artifact":art,
+ "resolved_snapshot_db":db,
+ "ts_utc":datetime.datetime.utcnow().replace(microsecond=0).isoformat()+"Z",
+}
+print(json.dumps(doc, sort_keys=True))' >&3
+}
+
+
+# JSON output mode:
+# - When enabled, send human logs to stderr and emit a single JSON object to stdout.
+JSON_MODE="${SNAPSHOT_JSON:-0}"
+ARGS=()
+for a in "$@"; do
+  if [[ "$a" == "--json" ]]; then
+    JSON_MODE=1
+  else
+    ARGS+=("$a")
+  fi
+done
+set -- "${ARGS[@]}"
+
+emit_json() {
+  [[ "$JSON_MODE" == "1" ]] || return 0
+  python3 - "$1" "$2" "${3:-}" "${SNAPSHOT_ARTIFACT:-${ART:-}}" <<'PYJ' >&3
+import json, sys, datetime
+ok_s, rc_s, msg, art = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+doc = {
+  "schema": "nexus_snapshot_verify_result",
+  "schema_version": 1,
+  "ok": (ok_s.lower() in ("1","true","yes")),
+  "rc": int(rc_s),
+  "artifact": (art if art else None),
+  "message": (msg if msg else None),
+  "ts_utc": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+}
+print(json.dumps(doc, sort_keys=True))
+PYJ
+}
+
+if [[ "$JSON_MODE" == "1" ]]; then
+  # Redirect normal stdout to stderr; keep fd 3 for JSON stdout.
+  exec 3>&1
+  exec 1>&2
+  trap 'rc=$?; if [[ $rc -eq 0 ]]; then emit_json true 0 "OK"; fi' EXIT
+fi
 
 # snapshot verify: validate a snapshot artifact WITHOUT restoring it as live DB
 # rc=0 OK, rc=2 verification failure
 
+  emit_json false 2 "$*"
 fail() { echo "ERROR: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
