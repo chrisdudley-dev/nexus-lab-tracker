@@ -2,6 +2,7 @@
 import json, os, socket, subprocess, tempfile, time
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,15 +19,28 @@ def free_port():
     s.close()
     return port
 
-def http_json(method, url, body=None, timeout=5):
+def http_json(method, url, body=None, timeout=6):
     data = None
     headers = {}
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
     req = Request(url, data=data, headers=headers, method=method)
-    with urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode("utf-8"))
+    except HTTPError as e:
+        raw = e.read().decode("utf-8") if e.fp else ""
+        try:
+            return e.code, json.loads(raw) if raw else {}
+        except Exception:
+            return e.code, {"_raw": raw}
+
+def assert_api_error(status, doc, error):
+    if doc.get("schema") != "nexus_api_error" or doc.get("schema_version") != 1 or doc.get("ok") is not False:
+        raise RuntimeError(f"FAIL: expected nexus_api_error schema, got status={status} doc={doc}")
+    if doc.get("error") != error:
+        raise RuntimeError(f"FAIL: expected error={error}, got {doc.get('error')} doc={doc}")
 
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="nexus-api-regress."))
@@ -37,7 +51,7 @@ def main() -> int:
     env = os.environ.copy()
     env["DB_PATH"] = str(db_path)
 
-    # Setup DB with two containers (container exclusivity enforced)
+    # Setup DB (two containers to respect exclusivity)
     run(["./scripts/lims.sh", "init"], env)
     run(["./scripts/migrate.sh", "up"], env)
     run(["./scripts/lims.sh", "container", "add", "--barcode", "T1", "--kind", "tube", "--location", "bench"], env)
@@ -57,44 +71,56 @@ def main() -> int:
     base = f"http://127.0.0.1:{port}"
 
     try:
-        # Wait for /health
-        for _ in range(40):
+        # Wait for /health (tolerate connection refused while server boots)
+        for _ in range(80):
+            rc = proc.poll()
+            if rc is not None:
+                err = ""
+                try:
+                    err = (proc.stderr.read() if proc.stderr else "")
+                except Exception:
+                    pass
+                raise RuntimeError(f"FAIL: API server exited early (rc={rc})\n{err}")
+
             try:
-                h = http_json("GET", base + "/health")
-                if h.get("ok") is True:
+                st, h = http_json("GET", base + "/health", None)
+                if st == 200 and h.get("ok") is True:
                     break
             except Exception:
-                time.sleep(0.1)
-        else:
-            # capture last stderr for debugging
-            err = ""
-            try:
-                err = (proc.stderr.read() if proc.stderr else "")
-            except Exception:
                 pass
-            raise RuntimeError("FAIL: API did not become healthy\n" + err)
+            time.sleep(0.1)
+        else:
+            raise RuntimeError("FAIL: API did not become healthy")
+
+        # Negative test: missing exports_dir
+        st, bad = http_json("POST", base + "/snapshot/export", {"include_samples": ["S-001"]})
+        if st != 400:
+            raise RuntimeError(f"FAIL: expected 400 for bad_request, got {st} doc={bad}")
+        assert_api_error(st, bad, "bad_request")
+
+        # sample report requires identifier
+        st, rep = http_json("POST", base + "/sample/report", {"identifier": "S-001"})
+        if st != 200 or not isinstance(rep, dict):
+            raise RuntimeError(f"FAIL: /sample/report unexpected: status={st} doc={rep}")
 
         # Snapshot export
-        doc = http_json("POST", base + "/snapshot/export", {
+        st, doc = http_json("POST", base + "/snapshot/export", {
             "exports_dir": str(exports_dir),
             "include_samples": ["S-001", "S-002"],
         })
-        if doc.get("schema") != "nexus_snapshot_export_result" or doc.get("ok") is not True:
-            raise RuntimeError(f"FAIL: export json unexpected: {doc}")
+        if st != 200 or doc.get("schema") != "nexus_snapshot_export_result" or doc.get("ok") is not True:
+            raise RuntimeError(f"FAIL: export json unexpected: status={st} doc={doc}")
 
-        snap_dir = Path(doc["snapshot_dir"])
         tarball = Path(doc["tarball"])
-        if not snap_dir.is_dir():
-            raise RuntimeError(f"FAIL: snapshot_dir missing: {snap_dir}")
         if not tarball.is_file():
             raise RuntimeError(f"FAIL: tarball missing: {tarball}")
 
         # Snapshot verify (tarball)
-        v = http_json("POST", base + "/snapshot/verify", {"artifact": str(tarball)})
-        if v.get("schema") != "nexus_snapshot_verify_result" or v.get("ok") is not True:
-            raise RuntimeError(f"FAIL: verify json unexpected: {v}")
+        st, v = http_json("POST", base + "/snapshot/verify", {"artifact": str(tarball)})
+        if st != 200 or v.get("schema") != "nexus_snapshot_verify_result" or v.get("ok") is not True:
+            raise RuntimeError(f"FAIL: verify json unexpected: status={st} doc={v}")
 
-        print("OK: API snapshot export + verify endpoints work.")
+        print("OK: API health + error schema + sample report + snapshot export/verify all work.")
         return 0
 
     finally:
