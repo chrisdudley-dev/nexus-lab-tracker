@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import subprocess
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+def _run_json(cmd, env=None):
+    p = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    out = p.stdout.strip()
+    if p.returncode != 0:
+        return (p.returncode, None, p.stderr)
+    try:
+        return (0, json.loads(out) if out else {}, p.stderr)
+    except Exception as e:
+        return (2, None, f"stdout was not valid JSON: {e}\nSTDOUT:\n{p.stdout}\nSTDERR:\n{p.stderr}")
+
+def _git_rev_short():
+    try:
+        p = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        return p.stdout.strip() if p.returncode == 0 else ""
+    except Exception:
+        return ""
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "NexusLIMSAPI/0.1"
+
+    def _send(self, code, obj):
+        body = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_json(self):
+        n = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(n) if n > 0 else b""
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except Exception as e:
+            raise ValueError(f"invalid JSON body: {e}")
+
+    def log_message(self, fmt, *args):
+        # keep logs on stderr
+        sys.stderr.write("%s - - [%s] %s\n" % (self.client_address[0], self.log_date_time_string(), fmt % args))
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/health":
+            self._send(200, {
+                "schema": "nexus_api_health",
+                "schema_version": 1,
+                "ok": True,
+                "db_path": os.environ.get("DB_PATH", ""),
+                "git_rev": _git_rev_short(),
+            })
+            return
+
+        if path == "/version":
+            self._send(200, {
+                "schema": "nexus_api_version",
+                "schema_version": 1,
+                "ok": True,
+                "git_rev": _git_rev_short(),
+            })
+            return
+
+        self._send(404, {"ok": False, "error": "not_found", "path": path})
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+
+        try:
+            body = self._read_json()
+        except ValueError as e:
+            self._send(400, {"ok": False, "error": "bad_request", "detail": str(e)})
+            return
+
+        # POST /snapshot/export
+        if path == "/snapshot/export":
+            exports_dir = body.get("exports_dir")
+            include_samples = body.get("include_samples", [])
+
+            if not exports_dir or not isinstance(exports_dir, str):
+                self._send(400, {"ok": False, "error": "bad_request", "detail": "exports_dir must be a string"})
+                return
+            if not isinstance(include_samples, list) or any(not isinstance(x, str) for x in include_samples):
+                self._send(400, {"ok": False, "error": "bad_request", "detail": "include_samples must be a list[str]"})
+                return
+
+            cmd = ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", exports_dir, "--json"]
+            for s in include_samples:
+                cmd += ["--include-sample", s]
+
+            rc, doc, err = _run_json(cmd, env=os.environ.copy())
+            if rc == 0:
+                self._send(200, doc)
+            else:
+                self._send(400, {"ok": False, "error": "command_failed", "rc": rc, "stderr": err})
+            return
+
+        # POST /snapshot/verify
+        # Uses SNAPSHOT_ARTIFACT env convention (your verify script already follows this pattern).
+        if path == "/snapshot/verify":
+            artifact = body.get("artifact")
+            if not artifact or not isinstance(artifact, str):
+                self._send(400, {"ok": False, "error": "bad_request", "detail": "artifact must be a string"})
+                return
+
+            env = os.environ.copy()
+            env["SNAPSHOT_ARTIFACT"] = artifact
+            cmd = ["./scripts/snapshot_verify.sh", "--json"]
+
+            rc, doc, err = _run_json(cmd, env=env)
+            if rc == 0:
+                self._send(200, doc)
+            else:
+                self._send(400, {"ok": False, "error": "command_failed", "rc": rc, "stderr": err})
+            return
+
+        self._send(404, {"ok": False, "error": "not_found", "path": path})
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8787)
+    args = ap.parse_args()
+
+    httpd = HTTPServer((args.host, args.port), Handler)
+    sys.stderr.write(f"OK: Nexus LIMS API listening on http://{args.host}:{args.port}\n")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        sys.stderr.write("OK: shutting down (Ctrl+C)\n")
+    finally:
+        httpd.server_close()
+
+if __name__ == "__main__":
+    main()
