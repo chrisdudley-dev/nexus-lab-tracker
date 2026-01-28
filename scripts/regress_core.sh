@@ -55,3 +55,6 @@ main() {
 }
 
 main "$@"
+
+# PASTE_GARBAGE_GUARD
+bash scripts/regress_no_paste_garbage.sh

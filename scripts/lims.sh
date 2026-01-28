@@ -14,6 +14,10 @@ if [[ "${1:-}" == "snapshot" ]]; then
     export)
       shift || true
       include_samples=()
+        json=0
+      # Avoid stale state: snapshot includes should be driven ONLY by CLI args.
+      unset SNAPSHOT_INCLUDE_SAMPLES SNAPSHOT_JSON || true
+
       while [[ $# -gt 0 ]]; do
         case "$1" in
           --exports-dir|--exports|--out)
@@ -30,9 +34,13 @@ if [[ "${1:-}" == "snapshot" ]]; then
               [[ "$s" != *[[:space:]]* ]] || { echo "ERROR: --include-sample must not contain spaces" >&2; exit 2; }
               include_samples+=("$s")
               shift 2
+              ;;            --json)
+              json=1
+              shift
               ;;
+
           -h|--help)
-            echo "Usage: ./scripts/lims.sh snapshot export [--exports-dir PATH] [--include-sample ID]..."
+            echo "Usage: ./scripts/lims.sh snapshot export [--exports-dir PATH] [--include-sample ID]... [--json]"
             exit 0
             ;;
           *)
@@ -41,6 +49,10 @@ if [[ "${1:-}" == "snapshot" ]]; then
             ;;
         esac
       done
+        if (( json == 1 )); then
+          export SNAPSHOT_JSON=1
+        fi
+
       if declare -p include_samples >/dev/null 2>&1 && (( ${#include_samples[@]} > 0 )); then
         export SNAPSHOT_INCLUDE_SAMPLES="${include_samples[*]}"
       fi

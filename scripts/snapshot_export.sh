@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+JSON_MODE="${SNAPSHOT_JSON:-0}"
+
+# JSON mode: keep stdout strictly machine-readable (JSON only).
+# Route all other output (including OK lines) to stderr.
+if [[ "$JSON_MODE" == "1" ]]; then
+  exec 3>&1
+  exec 1>&2
+fi
+
 # Helper: returns 0 if table exists, 1 otherwise
 sqlite_table_exists() {
   local db="$1" table="$2"
@@ -36,7 +45,13 @@ if [[ ! -f "$DB" ]]; then
 fi
 
 TS_UTC="$(date -u +%Y%m%d-%H%M%SZ)"
-SNAP_DIR="$EXPORTS_DIR/snapshot-$TS_UTC"
+BASE="$EXPORTS_DIR/snapshot-$TS_UTC"
+SNAP_DIR="$BASE"
+i=0
+while [[ -e "$SNAP_DIR" ]]; do
+  i=$((i+1))
+  SNAP_DIR="${BASE}-$i"
+done
 mkdir -p "$SNAP_DIR"
 : > "$SNAP_DIR/summary.txt"
 
@@ -124,11 +139,17 @@ cp -a migrations/. "$SNAP_DIR/migrations/"
 cp -a scripts/lims.sh scripts/migrate.sh "$SNAP_DIR/scripts/"
 
 # Tarball artifact for easy transfer
-TARBALL="$EXPORTS_DIR/snapshot-$TS_UTC.tar.gz"
-tar -czf "$TARBALL" -C "$EXPORTS_DIR" "snapshot-$TS_UTC"
+SNAP_BASENAME="$(basename "$SNAP_DIR")"
+TARBALL="$EXPORTS_DIR/${SNAP_BASENAME}.tar.gz"
+tar -czf "$TARBALL" -C "$EXPORTS_DIR" "$SNAP_BASENAME"
 
-echo "OK: wrote snapshot directory: $SNAP_DIR"
-echo "OK: wrote artifact:          $TARBALL"
+if [[ "$JSON_MODE" == "1" ]]; then
+  echo "OK: wrote snapshot directory: $SNAP_DIR" >&2
+  echo "OK: wrote artifact:          $TARBALL" >&2
+else
+  echo "OK: wrote snapshot directory: $SNAP_DIR"
+  echo "OK: wrote artifact:          $TARBALL"
+fi
 
 # ---- Snapshot manifest (self-describing artifact + integrity hashes) ----
 manifest="$SNAP_DIR/manifest.json"
@@ -148,11 +169,12 @@ db_path="$SNAP_DIR/lims.sqlite3"
 db_sha256="$(sha256sum "$db_path" | awk '{print $1}')"
 
 # Best-effort tarball location (sibling of snapshot dir)
-tar_path=""
+tar_path="$TARBALL"
 tar_sha256=""
-if [[ -f "${SNAP_DIR}.tar.gz" ]]; then
-  tar_path="${SNAP_DIR}.tar.gz"
+if [[ -f "$tar_path" ]]; then
   tar_sha256="$(sha256sum "$tar_path" | awk '{print $1}')"
+else
+  tar_path=""
 fi
 
 export created_at_utc git_commit db_sha256 tar_path tar_sha256 SNAPSHOT_INCLUDE_SAMPLES
@@ -202,3 +224,23 @@ for ident in [x for x in os.environ.get("SNAPSHOT_INCLUDE_SAMPLES", "").split() 
 
 manifest_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PYMAN
+
+# ---- JSON result (stdout only) ----
+if [[ "$JSON_MODE" == "1" ]]; then
+  export SNAP_DIR TARBALL EXPORTS_DIR created_at_utc SNAPSHOT_INCLUDE_SAMPLES
+  python3 - <<'PYJSON' >&3
+import json, os
+doc = {
+  "schema": "nexus_snapshot_export_result",
+  "schema_version": 1,
+  "ok": True,
+  "snapshot_dir": os.environ.get("SNAP_DIR",""),
+  "tarball": os.environ.get("TARBALL",""),
+  "exports_dir": os.environ.get("EXPORTS_DIR",""),
+  "included_samples": [x for x in os.environ.get("SNAPSHOT_INCLUDE_SAMPLES","").split() if x.strip()],
+  "created_at_utc": os.environ.get("created_at_utc",""),
+}
+print(json.dumps(doc, sort_keys=True, separators=(",",":")) )
+PYJSON
+  exec 3>&-
+fi
