@@ -42,6 +42,7 @@ main() {
   run ./scripts/regress_snapshot_manifest.py
   run ./scripts/regress_snapshot_restore.py
   run ./scripts/regress_snapshot_verify.py
+  ./scripts/regress_snapshot_verify_json.py
   run ./scripts/regress_snapshot_doctor.py
   run ./scripts/regress_snapshot_diff.py
   run ./scripts/regress_snapshot_latest.py
