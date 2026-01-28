@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -140,6 +140,28 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"ok": False, "error": "command_failed", "rc": rc, "stderr": err})
             return
 
+
+        # POST /sample/report
+        # Wrapper around: ./scripts/lims.sh sample report --json
+        # Body: {"limit": <int?>}
+        if path == "/sample/report":
+            limit = body.get("limit", None)
+            if limit is not None:
+                if not isinstance(limit, int) or limit < 0:
+                    self._send(400, {"ok": False, "error": "bad_request", "detail": "limit must be a non-negative int"})
+                    return
+
+            cmd = ["./scripts/lims.sh", "sample", "report", "--json"]
+            if limit is not None:
+                cmd += ["--limit", str(limit)]
+
+            rc, doc, err = _run_json(cmd, env=os.environ.copy())
+            if rc == 0:
+                self._send(200, doc)
+            else:
+                self._send(400, {"ok": False, "error": "command_failed", "rc": rc, "stderr": err})
+            return
+
         self._send(404, {"ok": False, "error": "not_found", "path": path})
 
 def main():
@@ -148,7 +170,9 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     args = ap.parse_args()
 
-    httpd = HTTPServer((args.host, args.port), Handler)
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+
+    httpd.daemon_threads = True
     sys.stderr.write(f"OK: Nexus LIMS API listening on http://{args.host}:{args.port}\n")
     try:
         httpd.serve_forever()
