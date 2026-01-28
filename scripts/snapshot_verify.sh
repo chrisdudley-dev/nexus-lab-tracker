@@ -1,5 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+# JERBOA_SNAPSHOT_VERIFY_JSON_V1
+# Contract: in --json mode, human logs go to stderr; exactly one JSON object goes to stdout.
+__SV_JSON=0
+__SV_EMITTED=0
+__SV_KEEP=()
+for __sv_a in "$@"; do
+  if [[ "$__sv_a" == "--json" ]]; then
+    __SV_JSON=1
+  else
+    __SV_KEEP+=("$__sv_a")
+  fi
+done
+set -- "${__SV_KEEP[@]}"
+unset __SV_KEEP __sv_a
+
+# Also allow env toggle
+if [[ "${SNAPSHOT_JSON:-0}" == "1" ]]; then
+  __SV_JSON=1
+fi
+
+# Reserve fd3 as original stdout; move stdout -> stderr in json mode
+if [[ "$__SV_JSON" == "1" ]]; then
+  exec 3>&1
+  exec 1>&2
+fi
+
+__sv_emit_json() {
+  [[ "$__SV_JSON" == "1" ]] || return 0
+  local ok="$1" rc="$2" msg="${3:-}"
+  local art="${SNAPSHOT_ARTIFACT:-${ART:-}}"
+  local db="${SRC_DB:-}"
+  SNAPSHOT_VERIFY_OK="$ok" \
+  SNAPSHOT_VERIFY_RC="$rc" \
+  SNAPSHOT_VERIFY_MSG="$msg" \
+  SNAPSHOT_VERIFY_ARTIFACT="$art" \
+  SNAPSHOT_VERIFY_DB="$db" \
+  python3 -c 'import os,json,datetime
+ok=os.environ.get("SNAPSHOT_VERIFY_OK","false").lower() in ("1","true","yes")
+rc=int(os.environ.get("SNAPSHOT_VERIFY_RC","2"))
+msg=os.environ.get("SNAPSHOT_VERIFY_MSG") or None
+art=os.environ.get("SNAPSHOT_VERIFY_ARTIFACT") or None
+db=os.environ.get("SNAPSHOT_VERIFY_DB") or None
+doc={
+ "schema":"nexus_snapshot_verify_result",
+ "schema_version":1,
+ "ok":ok,
+ "rc":rc,
+ "message":msg,
+ "artifact":art,
+ "resolved_snapshot_db":db,
+ "ts_utc":datetime.datetime.utcnow().replace(microsecond=0).isoformat()+"Z",
+}
+print(json.dumps(doc, sort_keys=True))' >&3
+}
+
 # --json flag shim (sets SNAPSHOT_JSON=1)
 # Accept --json as an alias for SNAPSHOT_JSON=1 (and remove it from args)
 __json_req=0
@@ -95,7 +151,15 @@ fi
 # rc=0 OK, rc=2 verification failure
 
   emit_json false 2 "$*"
-fail() { echo "ERROR: $*" >&2; exit 2; }
+fail() {
+  echo "ERROR: $*" >&2
+  if [[ "${__SV_JSON:-0}" == "1" ]]; then
+    __SV_EMITTED=1
+    __sv_emit_json false 2 "$*"
+  fi
+  exit 2
+}
+
 have() { command -v "$1" >/dev/null 2>&1; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -211,3 +275,4 @@ echo "samples=$samples"
 echo "containers=$containers"
 echo "sample_events=$sample_events"
 echo "OK: snapshot verify complete."
+if [[ "${__SV_JSON:-0}" == "1" ]]; then __SV_EMITTED=1; __sv_emit_json true 0 "OK"; fi
