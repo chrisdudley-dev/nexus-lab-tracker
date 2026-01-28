@@ -77,6 +77,8 @@ def main():
 
         for x in samples:
             fp = Path(x["path"])
+            if not fp.is_absolute():
+                fp = snap / fp
             if not fp.exists():
                 print("FAIL: manifest points to missing export:", fp)
                 return 1

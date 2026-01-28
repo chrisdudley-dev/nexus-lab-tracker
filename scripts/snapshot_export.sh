@@ -173,11 +173,11 @@ def sha256_file(p: Path) -> str:
 
 doc = {
     "schema": "nexus_snapshot_manifest",
-    "schema_version": 1,
+    "schema_version": 2,
     "created_at_utc": os.environ.get("created_at_utc", ""),
     "git_commit": os.environ.get("git_commit", ""),
-    "snapshot_dir": str(snap_dir),
-    "db": {"path": str(snap_dir / "lims.sqlite3"), "sha256": os.environ.get("db_sha256", "")},
+    "snapshot_dir": ".",
+    "db": {"path": "lims.sqlite3", "sha256": os.environ.get("db_sha256", "")},
     "tarball": None,
     "included_exports": {"samples": []},
 }
@@ -185,13 +185,14 @@ doc = {
 tar_path = os.environ.get("tar_path", "")
 tar_sha  = os.environ.get("tar_sha256", "")
 if tar_path and tar_sha:
-    doc["tarball"] = {"path": tar_path, "sha256": tar_sha}
+    doc["tarball"] = {"path": str(Path("..") / Path(tar_path).name), "sha256": tar_sha}
 
 samples_dir = snap_dir / "exports" / "samples"
 for ident in [x for x in os.environ.get("SNAPSHOT_INCLUDE_SAMPLES", "").split() if x.strip()]:
     safe = ident.strip().replace("/", "_")
     fp = samples_dir / f"sample-{safe}.json"
-    entry = {"external_id": ident, "path": str(fp)}
+    rel = fp.relative_to(snap_dir)
+    entry = {"external_id": ident, "path": str(rel)}
     if fp.exists():
         entry["sha256"] = sha256_file(fp)
     else:
