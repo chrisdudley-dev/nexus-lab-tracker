@@ -6,6 +6,9 @@ on:
   push:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
 jobs:
   regress-core:
     runs-on: ubuntu-latest
@@ -15,6 +18,12 @@ jobs:
 
       - name: Set up Python
         uses: actions/setup-python@v5
+        - name: Install OS deps
+          run: |
+            set -euo pipefail
+            sudo apt-get update
+            sudo apt-get install -y sqlite3
+
         with:
           python-version: "3.11"
 
@@ -25,6 +34,12 @@ jobs:
             python -m pip install --upgrade pip
             pip install -r requirements.txt
           fi
+
+        - name: Sanity checks
+          run: |
+            set -euo pipefail
+            bash -n scripts/snapshot_verify.sh scripts/snapshot_restore.sh
+            python3 -m py_compile scripts/lims_api.py
 
       - name: Run core regressions
         run: |
