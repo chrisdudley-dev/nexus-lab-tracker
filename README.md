@@ -75,4 +75,6 @@ Stability expectations:
 
 Versioning approach:
 - The API error envelope and machine-readable outputs use explicit schema identifiers (for example, `schema` and `schema_version`) to enable backwards-compatible evolution.
-- Behavioral changes are considered “breaking” if they alter safety semantics, determinism guarantees, exit codes, or documented JSON contracts.
+- Behavioral changes are considered "breaking" if they alter safety semantics, determinism guarantees, exit codes, or documented JSON contracts.
+
+
