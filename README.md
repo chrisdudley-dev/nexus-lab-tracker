@@ -65,3 +65,14 @@ Clients and integrations are intended to interact via the CLI and/or HTTP API bo
 ### Contributing
 Contributions are welcome. Please read `CONTRIBUTING.md` for expectations and run `./scripts/regress_core.sh` before pushing changes.
 If you are new to the project, check the issues labeled “good first issue.”
+
+### Stability and versioning
+This project prioritizes deterministic behavior and operator safety. The CLI and local HTTP API are treated as contracts.
+
+Stability expectations:
+- Human-facing output may evolve, but safety semantics and exit codes should remain stable.
+- JSON outputs are intended for automation; changes that break JSON parsing or schema fields require a clear justification and updated regressions.
+
+Versioning approach:
+- The API error envelope and machine-readable outputs use explicit schema identifiers (for example, `schema` and `schema_version`) to enable backwards-compatible evolution.
+- Behavioral changes are considered “breaking” if they alter safety semantics, determinism guarantees, exit codes, or documented JSON contracts.
