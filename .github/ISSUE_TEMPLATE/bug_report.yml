@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a bug with reproducible steps.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact CLI commands / inputs.
+      placeholder: |
+        ./scripts/lims.sh ...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment
+      description: OS, Python version, sqlite3 version, etc.
