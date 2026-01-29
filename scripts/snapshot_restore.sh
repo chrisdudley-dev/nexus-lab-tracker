@@ -42,6 +42,25 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   exit 2
 fi
 
+safe_extract_tgz() {
+  local art="$1" dest="$2"
+  command -v tar >/dev/null 2>&1 || { echo "ERROR: tar is required to extract tar.gz snapshots" >&2; exit 2; }
+  local list count
+  list="$(tar -tzf "$art")" || { echo "ERROR: tar -tzf failed: $art" >&2; exit 2; }
+  count="$(printf "%s\n" "$list" | sed "/^$/d" | wc -l | tr -d " ")"
+  if [[ "${count:-0}" -gt 2000 ]]; then
+    echo "ERROR: tarball too large ($count entries): $art" >&2
+    exit 2
+  fi
+  if printf "%s\n" "$list" | grep -Eq "(^/|(^|/)\.\.(/|$))"; then
+    printf "%s\n" "$list" | grep -E "(^/|(^|/)\.\.(/|$))" | sed "s/^/UNSAFE: /" >&2
+    echo "ERROR: unsafe paths in tarball (path traversal) - refusing to extract" >&2
+    exit 2
+  fi
+  tar -xzf "$art" -C "$dest" --no-same-owner --no-same-permissions
+}
+
+
 # Resolve DB_PATH the same way the app does, but print an absolute path.
 DB="$(python3 - <<'PY'
 from lims.db import db_path
@@ -95,7 +114,7 @@ elif [[ -f "$ART" ]]; then
   case "$ART" in
     *.tar.gz|*.tgz)
       tmpdir="$(mktemp -d)"
-      tar -xzf "$ART" -C "$tmpdir"
+      safe_extract_tgz "$ART" "$tmpdir"
       mapfile -t found < <(find "$tmpdir" -type f -name 'lims.sqlite3' | sort)
       if [[ ${#found[@]} -ne 1 ]]; then
         echo "ERROR: expected exactly 1 lims.sqlite3 in tarball, found ${#found[@]}" >&2

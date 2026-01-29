@@ -10,6 +10,11 @@ from urllib.parse import urlparse
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
 
+def _is_loopback(host: str) -> bool:
+    h = (host or "").strip().lower()
+    return h in ("127.0.0.1", "localhost", "::1") or h.startswith("127.")
+
+
 def _run_json(cmd, env=None, timeout_sec=None):
     timeout = CLI_TIMEOUT_SEC if timeout_sec is None else float(timeout_sec)
     try:
@@ -209,7 +214,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8787)
+    ap.add_argument("--allow-remote", action="store_true", help="Allow binding to non-loopback interfaces")
     args = ap.parse_args()
+
+    if not _is_loopback(args.host) and not args.allow_remote:
+        sys.stderr.write(f"ERROR: refusing to bind to {args.host}. Use --allow-remote if you intend remote access.\n")
+        sys.exit(2)
 
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     httpd.daemon_threads = True
