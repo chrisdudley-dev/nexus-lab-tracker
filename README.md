@@ -50,4 +50,10 @@ This project supports reproducible database snapshots (for backups, audits, and 
 ### Notes
 
 - Tube/vial containers are exclusive by default; regressions use separate containers when creating multiple samples.
-- For CI confidence: run ./scripts/regress_core.sh before pushing.
+- For CI confidence: run `./scripts/regress_core.sh` before pushing.
+
+
+
+
+## License
+This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See `LICENSE`.
