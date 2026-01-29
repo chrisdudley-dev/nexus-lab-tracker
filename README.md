@@ -61,3 +61,7 @@ This project is licensed under the GNU Affero General Public License v3.0 or lat
 ### Licensing intent
 Nexus Lab Tracker is AGPL-3.0-or-later to keep the core implementation open, including when deployed as a network service.
 Clients and integrations are intended to interact via the CLI and/or HTTP API boundary.
+
+### Contributing
+Contributions are welcome. Please read `CONTRIBUTING.md` for expectations and run `./scripts/regress_core.sh` before pushing changes.
+If you are new to the project, check the issues labeled “good first issue.”
