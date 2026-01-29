@@ -79,3 +79,6 @@ Versioning approach:
 - Behavioral changes are considered "breaking" if they alter safety semantics, determinism guarantees, exit codes, or documented JSON contracts.
 
 
+
+## Quickstart
+See docs/quickstart.md.
