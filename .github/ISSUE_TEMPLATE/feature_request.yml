@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed solution
+      description: Describe the desired behavior and any CLI/API impact.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
