@@ -82,3 +82,6 @@ Versioning approach:
 
 ## Quickstart
 See docs/quickstart.md.
+
+## Docs
+See docs/README.md.
