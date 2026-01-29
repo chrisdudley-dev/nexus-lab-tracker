@@ -162,6 +162,22 @@ fail() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+safe_extract_tgz() {
+  local art="$1" dest="$2"
+  local list count
+  list="$(tar -tzf "$art")" || fail "tar -tzf failed: $art"
+  count="$(printf "%s\n" "$list" | sed "/^$/d" | wc -l | tr -d " ")"
+  if [[ "${count:-0}" -gt 2000 ]]; then
+    fail "tarball too large ($count entries): $art"
+  fi
+  if printf "%s\n" "$list" | grep -Eq "(^/|(^|/)\.\.(/|$))"; then
+    printf "%s\n" "$list" | grep -E "(^/|(^|/)\.\.(/|$))" | sed "s/^/UNSAFE: /" >&2
+    fail "unsafe paths in tarball (path traversal) - refusing to extract"
+  fi
+  tar -xzf "$art" -C "$dest" --no-same-owner --no-same-permissions
+}
+
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -196,7 +212,7 @@ else
   case "$ART" in
     *.tar.gz|*.tgz)
       have tar || fail "tar is required to verify tar.gz snapshots"
-      tar -xzf "$ART" -C "$tmpdir"
+      safe_extract_tgz "$ART" "$tmpdir"
       mapfile -t found < <(find "$tmpdir" -type f -name 'lims.sqlite3' | sort)
       [[ ${#found[@]} -eq 1 ]] || { printf 'FOUND: %s\n' "${found[@]:-}" >&2; fail "expected exactly 1 lims.sqlite3 in tarball"; }
       SRC_DB="${found[0]}"
