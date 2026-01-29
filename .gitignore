@@ -30,3 +30,6 @@ exports/
 # LIMS local DB artifacts (keep local; do not commit)
 data/*.sqlite3
 data/*.db
+
+# local backups
+*.bak.*
