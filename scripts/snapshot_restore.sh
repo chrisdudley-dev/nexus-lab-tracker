@@ -57,6 +57,40 @@ safe_extract_tgz() {
     echo "ERROR: unsafe paths in tarball (path traversal) - refusing to extract" >&2
     exit 2
   fi
+  
+  # Extra hardening: reject symlinks/hardlinks/devices/pipes/sockets, and cap total unpacked bytes.
+  local tlist total max_total
+  max_total="${NEXUS_SNAPSHOT_TAR_MAX_TOTAL_BYTES:-200000000}"   # 200MB default
+
+  tlist="$(tar -tvzf "$art")" || { echo "ERROR: tar -tvzf failed: $art" >&2; exit 2; }
+
+  # File type is first char of perms (e.g. -, d, l, b, c, p, s, h). Reject l/h/b/c/p/s.
+  if printf "%s\n" "$tlist" | awk '{print $1}' | grep -Eq '^[lhbcps]'; then
+    printf "%s\n" "$tlist" | awk '$1 ~ /^[lhbcps]/ {print "UNSAFE-TYPE: " $0}' >&2
+    echo "ERROR: tarball contains symlinks/hardlinks/devices/pipes/sockets - refusing to extract" >&2
+    exit 2
+  fi
+
+  # Zip-bomb guard: sum sizes in a tar listing (GNU tar vs bsdtar formats).
+  total="$(printf "%s\n" "$tlist" | awk '
+    BEGIN{sum=0}
+    {
+      # GNU tar: perms owner/group size YYYY-MM-DD HH:MM name
+      if ($4 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) {
+        if ($3 ~ /^[0-9]+$/) sum += $3
+      }
+      # bsdtar: perms links user group size Mon DD HH:MM name
+      else if ($6 ~ /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/) {
+        if ($5 ~ /^[0-9]+$/) sum += $5
+      }
+    }
+    END{print sum+0}
+  ')"
+  if [[ "${total:-0}" -gt "${max_total:-0}" ]]; then
+    echo "ERROR: tarball uncompressed total too large (${total} bytes > ${max_total}) - refusing to extract" >&2
+    exit 2
+  fi
+
   tar -xzf "$art" -C "$dest" --no-same-owner --no-same-permissions
 }
 
