@@ -57,3 +57,7 @@ This project supports reproducible database snapshots (for backups, audits, and 
 
 ## License
 This project is licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See `LICENSE`.
+
+### Licensing intent
+Nexus Lab Tracker is AGPL-3.0-or-later to keep the core implementation open, including when deployed as a network service.
+Clients and integrations are intended to interact via the CLI and/or HTTP API boundary.
