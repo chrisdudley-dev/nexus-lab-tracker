@@ -33,3 +33,11 @@ data/*.db
 
 # local backups
 *.bak.*
+
+# Local backups / scratch (do not commit)
+*.bak.*
+*.bak
+*.orig
+*.rej
+*~
+README.md.bak.*
