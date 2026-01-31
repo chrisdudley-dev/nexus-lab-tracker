@@ -35,17 +35,26 @@ jobs:
       - name: Perform CodeQL Analysis (no Code Scanning upload)
         uses: github/codeql-action/analyze@v4
         with:
-          # Private repos on personal accounts often can't use Code Scanning alerts.
-          # Run analysis, but don't fail just because upload isn't available.
           upload: never
           output: codeql-sarif
-
+          upload-database: false
+          wait-for-processing: false
       - name: Find CodeQL SARIF
         id: codeql_sarif
         if: ${{ always() }}
         run: |
           set -euo pipefail
-          f="$(find codeql-sarif -type f \( -name '*.sarif' -o -name '*.sarif.json' \) 2>/dev/null"
+          echo "== ls codeql-sarif =="; ls -la codeql-sarif || true
+
+          f="$(find codeql-sarif -type f \(
+            -name '*.sarif' -o -name '*.sarif.json'
+          \) -print 2>/dev/null | head -n 1 || true)"
+          if [ -z "$f" ]; then
+            f="$(find . -maxdepth 8 -type f \(
+              -name '*.sarif' -o -name '*.sarif.json'
+            \) -print 2>/dev/null | head -n 1 || true)"
+          fi
+
           echo "file=$f" >> "$GITHUB_OUTPUT"
           if [ -n "$f" ]; then
             echo "Found SARIF: $f"
