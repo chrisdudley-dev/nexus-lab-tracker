@@ -46,13 +46,9 @@ jobs:
           set -euo pipefail
           echo "== ls codeql-sarif =="; ls -la codeql-sarif || true
 
-          f="$(find codeql-sarif -type f \(
-            -name '*.sarif' -o -name '*.sarif.json'
-          \) -print 2>/dev/null | head -n 1 || true)"
+          f="$(find codeql-sarif -type f \( -name '*.sarif' -o -name '*.sarif.json' \) -print 2>/dev/null | head -n 1 || true)"
           if [ -z "$f" ]; then
-            f="$(find . -maxdepth 8 -type f \(
-              -name '*.sarif' -o -name '*.sarif.json'
-            \) -print 2>/dev/null | head -n 1 || true)"
+            f="$(find . -maxdepth 8 -type f \( -name '*.sarif' -o -name '*.sarif.json' \) -print 2>/dev/null | head -n 1 || true)"
           fi
 
           echo "file=$f" >> "$GITHUB_OUTPUT"
