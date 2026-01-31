@@ -1,4 +1,5 @@
 name: Gitleaks
+
 on:
   pull_request:
     branches: ["main"]
@@ -16,6 +17,7 @@ permissions:
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout (full history required)
         uses: actions/checkout@v4
@@ -26,12 +28,19 @@ jobs:
         id: gitleaks
         uses: gacts/gitleaks@v1
         with:
-          # Optional later:
-          # config-path: .github/.gitleaks.toml
           fail-on-error: true
 
-      - name: Upload SARIF to Code Scanning
-        if: ${{ always() }}
+      - name: Upload Gitleaks SARIF artifact
+        if: ${{ always() && steps.gitleaks.outputs.sarif != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sarif
+          path: ${{ steps.gitleaks.outputs.sarif }}
+          if-no-files-found: warn
+
+      - name: Upload SARIF to Code Scanning (best effort)
+        if: ${{ always() && steps.gitleaks.outputs.sarif != '' }}
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.gitleaks.outputs.sarif }}
