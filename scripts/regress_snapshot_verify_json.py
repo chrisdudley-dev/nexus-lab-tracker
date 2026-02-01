@@ -40,7 +40,7 @@ def main():
         env2 = env.copy()
         env2["SNAPSHOT_ARTIFACT"] = str(tarball)
 
-        p = run([str(repo/"scripts/snapshot_verify.sh"), "--json"], env2, repo)
+        p = run(["bash", str(repo/"scripts/snapshot_verify.sh"), "--json"], env2, repo)
         if p.returncode != 0:
             print("FAIL: snapshot_verify --json rc=", p.returncode)
             print("STDOUT:\n"+p.stdout)

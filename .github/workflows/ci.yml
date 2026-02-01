@@ -45,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./scripts/regress_core.sh
+          chmod +x ./scripts/regress_*.py
           chmod +x ./scripts/lims.sh
           chmod +x ./scripts/migrate.sh
           ./scripts/regress_core.sh

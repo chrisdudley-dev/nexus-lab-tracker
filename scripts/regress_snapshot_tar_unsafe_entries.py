@@ -35,7 +35,7 @@ def main():
             sys.stderr.write(r1.stdout + "\n" + r1.stderr + "\n")
             raise SystemExit(2)
 
-        r2 = run(["./scripts/snapshot_verify.sh", str(bad)], check=False, env=env)
+        r2 = run(["bash", "./scripts/snapshot_verify.sh", str(bad)], check=False, env=env)
         if r2.returncode == 0:
             sys.stderr.write("FAIL: verify accepted tarball containing symlink\n")
             sys.stderr.write(r2.stdout + "\n" + r2.stderr + "\n")

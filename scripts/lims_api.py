@@ -196,7 +196,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 env = os.environ.copy()
                 env["SNAPSHOT_ARTIFACT"] = artifact
-                cmd = ["./scripts/snapshot_verify.sh", "--json"]
+                cmd = ["bash", "./scripts/snapshot_verify.sh", "--json"]
 
                 rc, doc, err = _run_json(cmd, env=env)
                 if rc == 0:
