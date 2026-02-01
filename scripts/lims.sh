@@ -130,7 +130,7 @@ if [[ "${1:-}" == "snapshot" ]]; then
       [[ -n "$artifact" ]] || { echo "ERROR: missing snapshot artifact path" >&2; exit 2; }
       export SNAPSHOT_ARTIFACT="$artifact"
       export SNAPSHOT_DO_MIGRATE="$do_migrate"
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_verify.sh"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_verify.sh"
       ;;
 
     doctor)
