@@ -93,7 +93,7 @@ def main() -> int:
             raise RuntimeError("FAIL: API did not become healthy")
 
         # Negative test: missing exports_dir
-        st, bad = http_json("POST", base + "/snapshot/export", {"include_samples": ["S-001"]})
+        st, bad = http_json("POST", base + "/snapshot/export", {"exports_dir": "/tmp/evil", "include_samples": "S-001"})
         if st != 400:
             raise RuntimeError(f"FAIL: expected 400 for bad_request, got {st} doc={bad}")
         assert_api_error(st, bad, "bad_request")
