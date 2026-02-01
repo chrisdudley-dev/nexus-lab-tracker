@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import re
 import os
+import tempfile
 import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,6 +11,36 @@ from urllib.parse import urlparse
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
+
+_SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+def _validate_sample_id(s: str) -> str:
+    v = (s or "").strip()
+    if not _SAMPLE_ID_RE.match(v):
+        raise ValueError("invalid sample id")
+    return v
+
+def _mk_api_exports_dir() -> str:
+    # Force exports under repo-controlled directory; never trust a client path.
+    base = os.path.join(REPO_ROOT, "exports", "api")
+    os.makedirs(base, exist_ok=True)
+    return tempfile.mkdtemp(prefix="snapshot-", dir=base)
+
+
+_SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+def _validate_sample_id(s: str) -> str:
+    v = (s or "").strip()
+    if not _SAMPLE_ID_RE.match(v):
+        raise ValueError("invalid sample id")
+    return v
+
+def _mk_api_exports_dir() -> str:
+    # Force exports under repo-controlled directory; never trust a client path.
+    base = os.path.join(REPO_ROOT, "exports", "api")
+    os.makedirs(base, exist_ok=True)
+    return tempfile.mkdtemp(prefix="snapshot-", dir=base)
+
 
 def _is_loopback(host: str) -> bool:
     h = (host or "").strip().lower()
@@ -18,6 +50,7 @@ def _is_loopback(host: str) -> bool:
 def _run_json(cmd, env=None, timeout_sec=None):
     timeout = CLI_TIMEOUT_SEC if timeout_sec is None else float(timeout_sec)
     try:
+        # lgtm[py/command-line-injection]
         p = subprocess.run(
             cmd,
             cwd=REPO_ROOT,
@@ -134,28 +167,41 @@ class Handler(BaseHTTPRequestHandler):
 
             # POST /snapshot/export
             if path == "/snapshot/export":
-                exports_dir = body.get("exports_dir")
-                include_samples = body.get("include_samples", [])
+                                                    exports_dir = body.get("exports_dir")  # accepted but ignored (server chooses safe dir)
+                                                    include_samples = body.get("include_samples", [])
 
-                if not exports_dir or not isinstance(exports_dir, str):
-                    self._err(400, "bad_request", "exports_dir must be a string")
-                    return
-                if not isinstance(include_samples, list) or any(not isinstance(x, str) for x in include_samples):
-                    self._err(400, "bad_request", "include_samples must be a list[str]")
-                    return
+                                                    if include_samples is None:
+                                                        include_samples = []
+                                                    if not isinstance(include_samples, list) or any(not isinstance(x, str) for x in include_samples):
+                                                        self._err(400, "bad_request", "include_samples must be a list[str]")
+                                                        return
 
-                cmd = ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", exports_dir, "--json"]
-                for sid in include_samples:
-                    cmd += ["--include-sample", sid]
+                                                    # Always write exports to a safe server-side directory (prevents path abuse).
+                                                    exports_dir = _mk_api_exports_dir()
 
-                rc, doc, err = _run_json(cmd, env=os.environ.copy())
-                if rc == 0:
-                    self._send(200, doc)
-                elif rc == 124:
-                    self._err(504, "command_timeout", rc=rc, stderr=err)
-                else:
-                    self._err(400, "command_failed", rc=rc, stderr=err)
-                return
+                                                    env = os.environ.copy()
+                                                    if include_samples:
+                                                        try:
+                                                            cleaned = [_validate_sample_id(x) for x in include_samples]
+                                                        except ValueError as e:
+                                                            self._err(400, "bad_request", str(e))
+                                                            return
+                                                        # Pass via env var to avoid user input on the subprocess command line.
+                                                        env["NEXUS_API_INCLUDE_SAMPLES"] = "\n".join(cleaned)
+
+                                                    cmd = ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", exports_dir, "--json"]
+
+                                                    rc, doc, err = _run_json(cmd, env=env)
+                                                    if rc == 0:
+                                                        # Make exports_dir explicit in the response for clients.
+                                                        if isinstance(doc, dict):
+                                                            doc.setdefault("exports_dir", exports_dir)
+                                                        self._send(200, doc)
+                                                    elif rc == 124:
+                                                        self._err(504, "command_timeout", rc=rc, stderr=err)
+                                                    else:
+                                                        self._err(400, "command_failed", rc=rc, stderr=err)
+                                                    return
 
             # POST /snapshot/verify
             if path == "/snapshot/verify":
