@@ -73,8 +73,9 @@ if [[ "${1:-}" == "snapshot" ]]; then
         export SNAPSHOT_INCLUDE_SAMPLES
       fi
 
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_export.sh"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_export.sh"
       ;;
+
 
     restore)
       shift || true
@@ -103,8 +104,9 @@ if [[ "${1:-}" == "snapshot" ]]; then
       export SNAPSHOT_ARTIFACT="$artifact"
       export SNAPSHOT_FORCE="$force"
       export SNAPSHOT_BACKUP="$backup"
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_restore.sh"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_restore.sh"
       ;;
+
 
     verify)
       shift || true
@@ -133,6 +135,7 @@ if [[ "${1:-}" == "snapshot" ]]; then
       exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_verify.sh"
       ;;
 
+
     doctor)
       shift || true
       if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -154,33 +157,40 @@ if [[ "${1:-}" == "snapshot" ]]; then
     latest)
       shift || true
       exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_latest.sh" "$@"
+
       ;;
 
     diff-latest)
       shift || true
       exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_diff_latest.sh" "$@"
+
       ;;
 
     pins)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_pins.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_pins.sh" "$@"
+
       ;;
     pin)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_pin.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_pin.sh" "$@"
+
       ;;
     unpin)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_unpin.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_unpin.sh" "$@"
+
       ;;
     prune)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_prune.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_prune.sh" "$@"
+
       ;;
 
     gc)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_gc.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_gc.sh" "$@"
+
       ;;
 
     *)
