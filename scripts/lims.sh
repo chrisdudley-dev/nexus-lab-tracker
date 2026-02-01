@@ -158,7 +158,7 @@ if [[ "${1:-}" == "snapshot" ]]; then
 
     diff-latest)
       shift || true
-      exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_diff_latest.sh" "$@"
+      exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_diff_latest.sh" "$@"
       ;;
 
     pins)
