@@ -26,6 +26,7 @@ def _run_json(cmd, env=None, timeout_sec=None):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout,
+            shell=False,
         )
     except subprocess.TimeoutExpired as e:
         return (124, None, f"timeout after {timeout:.1f}s: {cmd}\n{e}")
@@ -47,6 +48,7 @@ def _git_rev_short():
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            shell=False,
             check=False,
         )
         return p.stdout.strip() if p.returncode == 0 else ""
