@@ -14,6 +14,21 @@ if [[ "${1:-}" == "snapshot" ]]; then
     export)
       shift || true
       include_samples=()
+      # API hook: sample IDs via env var so the API doesn't put untrusted input on argv.
+      if [[ -n "${NEXUS_API_INCLUDE_SAMPLES:-}" ]]; then
+        while IFS= read -r sid; do
+          sid="${sid//$'\r'/}"  # tolerate CRLF
+          # trim leading/trailing whitespace
+          sid="${sid#"${sid%%[![:space:]]*}"}"
+          sid="${sid%"${sid##*[![:space:]]}"}"
+          [[ -n "$sid" ]] || continue
+          [[ "$sid" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$ ]] || { echo "ERROR: invalid sample id in NEXUS_API_INCLUDE_SAMPLES: $sid" >&2; exit 2; }
+          include_samples+=("$sid")
+          (( ${#include_samples[@]} <= 512 )) || { echo "ERROR: too many include samples (max 512)" >&2; exit 2; }
+        done <<<"${NEXUS_API_INCLUDE_SAMPLES}"
+      fi
+      unset NEXUS_API_INCLUDE_SAMPLES || true
+
         json=0
       # Avoid stale state: snapshot includes should be driven ONLY by CLI args.
       unset SNAPSHOT_INCLUDE_SAMPLES SNAPSHOT_JSON || true
@@ -54,7 +69,8 @@ if [[ "${1:-}" == "snapshot" ]]; then
         fi
 
       if declare -p include_samples >/dev/null 2>&1 && (( ${#include_samples[@]} > 0 )); then
-        export SNAPSHOT_INCLUDE_SAMPLES="${include_samples[*]}"
+        SNAPSHOT_INCLUDE_SAMPLES="$(printf '%s\n' "${include_samples[@]}")"
+        export SNAPSHOT_INCLUDE_SAMPLES
       fi
 
       exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/snapshot_export.sh"
