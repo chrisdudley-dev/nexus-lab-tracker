@@ -26,22 +26,6 @@ def _mk_api_exports_dir() -> str:
     os.makedirs(base, exist_ok=True)
     return tempfile.mkdtemp(prefix="snapshot-", dir=base)
 
-
-_SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
-
-def _validate_sample_id(s: str) -> str:
-    v = (s or "").strip()
-    if not _SAMPLE_ID_RE.match(v):
-        raise ValueError("invalid sample id")
-    return v
-
-def _mk_api_exports_dir() -> str:
-    # Force exports under repo-controlled directory; never trust a client path.
-    base = os.path.join(REPO_ROOT, "exports", "api")
-    os.makedirs(base, exist_ok=True)
-    return tempfile.mkdtemp(prefix="snapshot-", dir=base)
-
-
 def _is_loopback(host: str) -> bool:
     h = (host or "").strip().lower()
     return h in ("127.0.0.1", "localhost", "::1") or h.startswith("127.")
