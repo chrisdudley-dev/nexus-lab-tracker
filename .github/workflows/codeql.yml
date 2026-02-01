@@ -58,14 +58,6 @@ jobs:
             echo "WARN: No SARIF found" >&2
           fi
 
-      - name: Upload CodeQL SARIF artifact
-        if: ${{ always() && steps.codeql_sarif.outputs.file != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: codeql-sarif
-          path: ${{ steps.codeql_sarif.outputs.file }}
-          if-no-files-found: warn
-
       - name: Upload SARIF to Code Scanning (best effort)
         if: ${{ always() && steps.codeql_sarif.outputs.file != '' }}
         continue-on-error: true
