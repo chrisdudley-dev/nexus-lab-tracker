@@ -38,8 +38,8 @@ done
 latest_args=()
 [[ -n "$dir" ]] && latest_args+=(--dir "$dir")
 
-A="$(./scripts/snapshot_latest.sh --n "$n" "${latest_args[@]}")"
-B="$(./scripts/snapshot_latest.sh --n 1   "${latest_args[@]}")"
+A="$(bash ./scripts/snapshot_latest.sh --n "$n" "${latest_args[@]}")"
+B="$(bash ./scripts/snapshot_latest.sh --n 1   "${latest_args[@]}")"
 
 flags=()
 (( no_migrate )) && flags+=(--no-migrate)
