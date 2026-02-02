@@ -52,7 +52,8 @@ main() {
   run ./scripts/regress_snapshot_gc.py
 
   echo
-  echo "OK: core regressions all green."
+  run bash ./scripts/regress_snapshot_bash_invocation_guardrail.sh
+echo "OK: core regressions all green."
 }
 
 main "$@"
