@@ -3,13 +3,16 @@ set -euo pipefail
 
 main() {
   run() {
-    local s="$1"
+    if [[ $# -lt 1 ]]; then
+      echo "ERROR: run() called with no args" >&2
+      return 2
+    fi
     echo
-    echo "-> $s"
-    if [[ "$s" == *.py ]]; then
-      python3 "$s"
+    echo "-> $*"
+    if [[ $# -eq 1 && "$1" == *.py ]]; then
+      python3 "$1"
     else
-      "$s"
+      "$@"
     fi
   }
 
@@ -42,8 +45,8 @@ main() {
   run ./scripts/regress_snapshot_manifest.py
   run ./scripts/regress_snapshot_restore.py
   run ./scripts/regress_snapshot_verify.py
-./scripts/regress_snapshot_tar_unsafe_entries.py
-  ./scripts/regress_snapshot_verify_json.py
+  run ./scripts/regress_snapshot_tar_unsafe_entries.py
+  run ./scripts/regress_snapshot_verify_json.py
   run ./scripts/regress_snapshot_doctor.py
   run ./scripts/regress_snapshot_diff.py
   run ./scripts/regress_snapshot_latest.py
@@ -53,7 +56,7 @@ main() {
 
   echo
   run bash ./scripts/regress_snapshot_bash_invocation_guardrail.sh
-echo "OK: core regressions all green."
+  echo "OK: core regressions all green."
 }
 
 main "$@"
