@@ -1,37 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Allow emergency bypass:
-#   NEXUS_SKIP_PREPUSH=1 git push
-if [[ "${NEXUS_SKIP_PREPUSH:-}" == "1" ]]; then
-  exit 0
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+  echo "ERROR: Refusing to push directly from $branch." >&2
+  echo "Make a branch + PR instead." >&2
+  exit 2
 fi
 
-remote_name="${1:-}"
-remote_url="${2:-}"
-
-need_check=0
-
-# stdin lines are: <local_ref> <local_sha> <remote_ref> <remote_sha>
-while read -r local_ref local_sha remote_ref remote_sha; do
-  # Skip deletions
-  if [[ "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
-    continue
-  fi
-  if [[ "$remote_ref" == "refs/heads/main" ]]; then
-    need_check=1
-  fi
-done
-
-if [[ "$need_check" -eq 0 ]]; then
-  exit 0
+# Optional: run regress gate before any push
+if [[ -x ./scripts/regress_core.sh ]]; then
+  ./scripts/regress_core.sh >/dev/null
 fi
-
-echo "pre-push: main push detected; running core regressions..."
-if [[ ! -x "./scripts/regress_core.sh" ]]; then
-  echo "pre-push ERROR: ./scripts/regress_core.sh missing or not executable" >&2
-  exit 1
-fi
-
-./scripts/regress_core.sh
-echo "pre-push: OK"
