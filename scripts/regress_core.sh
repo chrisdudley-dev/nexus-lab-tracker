@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Integrity guard (catches paste-garble / truncation early)
+grep -q 'PASTE_GARBAGE_GUARD' "$0" || { echo 'ERROR: corrupted regress_core.sh (missing PASTE_GARBAGE_GUARD)' >&2; exit 2; }
+grep -q 'API_REGRESS' "$0" || { echo 'ERROR: corrupted regress_core.sh (missing API_REGRESS)' >&2; exit 2; }
+
+
 main() {
   run() {
     if [[ $# -lt 1 ]]; then
