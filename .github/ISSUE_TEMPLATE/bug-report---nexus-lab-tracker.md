@@ -1,10 +1,10 @@
 ---
-name: Bug report
+name: Bug report - nexus-lab-tracker
 about: Use this template to report bugs in Nexus Lab Tracker. Include clear reproduction
   steps, what you expected, and what happened. Attach logs or screenshots when available.
 title: ''
 labels: area:db, area:docs, bug, needs-triage, priority:low
-assignees: ''
+assignees: chrisdudley-dev
 
 ---
 
