@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nexus Lab Tracker — Demo UI</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; line-height: 1.35; }
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    label { display:block; font-size:.9rem; opacity:.9; margin-bottom:6px; }
+    input { width: min(520px, 100%); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.45); }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.45); cursor: pointer; }
+    pre { white-space: pre-wrap; word-break: break-word; padding: 12px; border-radius: 10px; background: rgba(127,127,127,.12); }
+    small { opacity: .8; }
+    h1 { font-size: 1.35rem; margin: 0 0 8px 0; }
+    h2 { font-size: 1.05rem; margin: 0 0 10px 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Nexus Lab Tracker — Demo UI</h1>
+  <small>Served by <code>scripts/lims_api.py</code>. Local demo surface to prove API → website end-to-end.</small>
+
+  <div class="card">
+    <h2>API Health</h2>
+    <button id="btnHealth">GET /health</button>
+  </div>
+
+  <div class="card">
+    <h2>Sample Report</h2>
+    <div class="row">
+      <div>
+        <label for="sampleId">identifier</label>
+        <input id="sampleId" value="S-001" />
+      </div>
+      <div>
+        <label for="sampleLimit">limit (optional)</label>
+        <input id="sampleLimit" value="50" />
+      </div>
+      <button id="btnSampleReport">POST /sample/report</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Snapshot Export + Verify</h2>
+    <div class="row">
+      <div>
+        <label for="includeSamples">include_samples (comma-separated, optional)</label>
+        <input id="includeSamples" value="S-001,S-002" />
+      </div>
+      <button id="btnSnapshotExport">POST /snapshot/export</button>
+      <button id="btnSnapshotVerify" disabled>POST /snapshot/verify</button>
+    </div>
+    <small id="hint">Verify enables after export returns an artifact path.</small>
+  </div>
+
+  <div class="card">
+    <h2>Output</h2>
+    <pre id="out">(run a request)</pre>
+  </div>
+
+<script>
+  const out = document.getElementById("out");
+  const hint = document.getElementById("hint");
+  const btnVerify = document.getElementById("btnSnapshotVerify");
+  let lastArtifact = null;
+
+  const pretty = (x) => { try { return JSON.stringify(x, null, 2); } catch { return String(x); } };
+
+  async function apiGet(path) {
+    const r = await fetch(path);
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const data = ct.includes("application/json") ? await r.json() : await r.text();
+    return { status: r.status, data };
+  }
+
+  async function apiPost(path, body) {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    });
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const data = ct.includes("application/json") ? await r.json() : await r.text();
+    return { status: r.status, data };
+  }
+
+  function setOutput(title, resp) {
+    out.textContent = `${title}
+
+HTTP ${resp.status}
+${pretty(resp.data)}`;
+  }
+
+  document.getElementById("btnHealth").addEventListener("click", async () => {
+    try { setOutput("GET /health", await apiGet("/health")); }
+    catch (e) { out.textContent = "ERROR: " + e; }
+  });
+
+  document.getElementById("btnSampleReport").addEventListener("click", async () => {
+    const identifier = (document.getElementById("sampleId").value || "").trim();
+    const limitRaw = (document.getElementById("sampleLimit").value || "").trim();
+    const body = { identifier };
+    if (limitRaw !== "") {
+      const n = Number(limitRaw);
+      if (!Number.isFinite(n) || n < 0) { out.textContent = "ERROR: limit must be non-negative"; return; }
+      body.limit = Math.floor(n);
+    }
+    try { setOutput("POST /sample/report", await apiPost("/sample/report", body)); }
+    catch (e) { out.textContent = "ERROR: " + e; }
+  });
+
+  document.getElementById("btnSnapshotExport").addEventListener("click", async () => {
+    const raw = (document.getElementById("includeSamples").value || "").trim();
+    const include_samples = raw ? raw.split(",").map(s => s.trim()).filter(Boolean) : [];
+
+    const body = { exports_dir: "IGNORED_BY_SERVER", include_samples };
+
+    try {
+      const resp = await apiPost("/snapshot/export", body);
+      setOutput("POST /snapshot/export", resp);
+
+      const d = resp.data || {};
+      lastArtifact = d.tarball || d.artifact || d.path || d.snapshot_tarball || null;
+
+      if (typeof lastArtifact === "string" && lastArtifact.length > 0) {
+        btnVerify.disabled = false;
+        hint.textContent = "Ready to verify artifact: " + lastArtifact;
+      } else {
+        btnVerify.disabled = true;
+        hint.textContent = "Verify enables after export returns an artifact path.";
+      }
+    } catch (e) {
+      out.textContent = "ERROR: " + e;
+    }
+  });
+
+  btnVerify.addEventListener("click", async () => {
+    if (!lastArtifact) { out.textContent = "ERROR: run export first"; return; }
+    try { setOutput("POST /snapshot/verify", await apiPost("/snapshot/verify", { artifact: lastArtifact })); }
+    catch (e) { out.textContent = "ERROR: " + e; }
+  });
+</script>
+</body>
+</html>

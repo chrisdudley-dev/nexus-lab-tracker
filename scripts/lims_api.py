@@ -9,7 +9,9 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from pathlib import Path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+UI_ROOT = os.path.join(REPO_ROOT, "web")
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
 
 _SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
@@ -25,6 +27,16 @@ def _mk_api_exports_dir() -> str:
     base = os.path.join(REPO_ROOT, "exports", "api")
     os.makedirs(base, exist_ok=True)
     return tempfile.mkdtemp(prefix="snapshot-", dir=base)
+
+def _read_ui_file(rel_path: str) -> bytes:
+    """
+    Read a UI file from UI_ROOT safely (blocks path traversal).
+    """
+    base = Path(UI_ROOT).resolve()
+    p = (base / rel_path).resolve()
+    if p != base and base not in p.parents:
+        raise ValueError("invalid ui path")
+    return p.read_bytes()
 
 def _is_loopback(host: str) -> bool:
     h = (host or "").strip().lower()
@@ -81,6 +93,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+    def _send_bytes(self, code: int, body: bytes, content_type: str):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
 
     def _err(self, http_code, error, detail=None, **extra):
         doc = {
@@ -106,10 +126,64 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - - [%s] %s\n" % (self.client_address[0], self.log_date_time_string(), fmt % args))
+    def do_HEAD(self):
+        try:
+            path = urlparse(self.path).path
+
+            # Mirror the GET routes we care about, but send headers only.
+            if path in ("/", "/index.html", "/ui"):
+                try:
+                    body = _read_ui_file("index.html")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                except Exception as e:
+                    msg = f"UI load failed: {type(e).__name__}: {e}\\n".encode("utf-8")
+                    self.send_response(500)
+                    self.send_header("Content-Type", "text/plain; charset=utf-8")
+                    self.send_header("Content-Length", str(len(msg)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                return
+
+            if path == "/health":
+                body = json.dumps(
+                    {"schema": "nexus_api_health", "ok": True},
+                    sort_keys=True,
+                    separators=(",", ":")
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                return
+
+            # Default: HEAD not supported for other paths
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        except Exception:
+            self.send_response(500)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+
 
     def do_GET(self):
         try:
             path = urlparse(self.path).path
+
+            if path in ("/", "/index.html", "/ui"):
+                try:
+                    body = _read_ui_file("index.html")
+                    self._send_bytes(200, body, "text/html; charset=utf-8")
+                except Exception as e:
+                    msg = f"UI load failed: {type(e).__name__}: {e}\n".encode("utf-8")
+                    self._send_bytes(500, msg, "text/plain; charset=utf-8")
+                return
 
             if path == "/health":
                 self._send(200, {
