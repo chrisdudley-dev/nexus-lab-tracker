@@ -85,4 +85,3 @@ See docs/quickstart.md.
 
 ## Docs
 See docs/README.md.
-# gate test 20260201-180247Z
