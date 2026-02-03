@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import os
 import argparse
 import json
 import re
@@ -10,6 +11,15 @@ from typing import Any, List, Optional, Tuple, Union
 
 from . import db
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.environ.get(name, "") or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except Exception:
+        return default
 
 def utc_now_iso() -> str:
   return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -772,6 +782,10 @@ def cmd_sample_events(args: argparse.Namespace) -> int:
 
 
 def cmd_sample_report(args: argparse.Namespace) -> int:
+  if not getattr(args, "identifier", None):
+      print("ERROR: identifier is required")
+      return 2
+
   conn = db.connect()
   ensure_db(conn)
 
@@ -1254,8 +1268,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
   sp_report = sample_sub.add_parser("report", help="Generate a chain-of-custody report for a sample")
-  sp_report.add_argument("identifier", help="Numeric id or external_id")
-  sp_report.add_argument("--limit", type=int, default=50, help="Max events (default: 50)")
+  sp_report.add_argument(
+    "identifier",
+    nargs="?",
+    default=(os.environ.get("NEXUS_API_SAMPLE_IDENTIFIER") or None),
+    help="Numeric id or external_id",
+  )
+  sp_report.add_argument("--limit", type=int, default=_env_int("NEXUS_API_SAMPLE_REPORT_LIMIT", 50), help="Max events (default: 50)")
   sp_report.add_argument("--json", action="store_true", help="Emit a single JSON object (sample + events)")
   sp_report.set_defaults(fn=cmd_sample_report)
 

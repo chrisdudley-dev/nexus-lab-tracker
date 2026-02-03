@@ -34,7 +34,6 @@ def _is_loopback(host: str) -> bool:
 def _run_json(cmd, env=None, timeout_sec=None):
     timeout = CLI_TIMEOUT_SEC if timeout_sec is None else float(timeout_sec)
     try:
-        # lgtm[py/command-line-injection]
         p = subprocess.run(
             cmd,
             cwd=REPO_ROOT,
@@ -151,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
 
             # POST /snapshot/export
             if path == "/snapshot/export":
-                                                    exports_dir = body.get("exports_dir")  # accepted but ignored (server chooses safe dir)
+                                                    _ = body.get("exports_dir")  # ignored; server chooses a safe dir
                                                     include_samples = body.get("include_samples", [])
 
                                                     if include_samples is None:
@@ -162,8 +161,8 @@ class Handler(BaseHTTPRequestHandler):
 
                                                     # Always write exports to a safe server-side directory (prevents path abuse).
                                                     exports_dir = _mk_api_exports_dir()
-
                                                     env = os.environ.copy()
+                                                    env["EXPORTS_DIR"] = exports_dir
                                                     if include_samples:
                                                         try:
                                                             cleaned = [_validate_sample_id(x) for x in include_samples]
@@ -173,8 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                                                         # Pass via env var to avoid user input on the subprocess command line.
                                                         env["NEXUS_API_INCLUDE_SAMPLES"] = "\n".join(cleaned)
 
-                                                    cmd = ["./scripts/lims.sh", "snapshot", "export", "--exports-dir", exports_dir, "--json"]
-
+                                                    cmd = ["./scripts/lims.sh", "snapshot", "export", "--json"]
                                                     rc, doc, err = _run_json(cmd, env=env)
                                                     if rc == 0:
                                                         # Make exports_dir explicit in the response for clients.
@@ -220,12 +218,14 @@ class Handler(BaseHTTPRequestHandler):
                         self._err(400, "bad_request", "limit must be a non-negative int")
                         return
 
-                cmd = ["./scripts/lims.sh", "sample", "report", "--json"]
+                env = os.environ.copy()
+                env["NEXUS_API_SAMPLE_IDENTIFIER"] = identifier
                 if limit is not None:
-                    cmd += ["--limit", str(limit)]
-                cmd += [identifier]
+                    env["NEXUS_API_SAMPLE_REPORT_LIMIT"] = str(limit)
 
-                rc, doc, err = _run_json(cmd, env=os.environ.copy())
+                cmd = ["./scripts/lims.sh", "sample", "report", "--json"]
+                rc, doc, err = _run_json(cmd, env=env)
+
                 if rc == 0:
                     self._send(200, doc)
                 elif rc == 124:
