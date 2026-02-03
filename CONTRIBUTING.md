@@ -76,3 +76,11 @@ If you believe you’ve found a security vulnerability, please follow `SECURITY.
 ## License
 
 By contributing, you agree your contributions are licensed under **AGPL-3.0-or-later** (the project’s license).
+
+## Running tests (local)
+
+Run the unit tests the same way CI does:
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py" -q
+```
