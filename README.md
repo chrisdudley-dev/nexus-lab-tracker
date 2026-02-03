@@ -1,6 +1,6 @@
 # Nexus Lab Tracker
 
-Local-first “mini-LIMS” for tracking containers, samples, and events with a deterministic CLI and reproducible SQLite snapshot workflows.
+LIMS for tracking containers, samples, and events with a deterministic CLI and reproducible SQLite snapshot workflows.
 
 - Sample event timestamps include fractional seconds (UTC) for improved chronological clarity; event listings remain deterministically ordered by `(occurred_at, id)`.
 
