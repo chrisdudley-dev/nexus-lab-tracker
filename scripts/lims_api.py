@@ -6,6 +6,7 @@ import os
 import tempfile
 import subprocess
 import sys
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -37,6 +38,36 @@ def _read_ui_file(rel_path: str) -> bytes:
     if p != base and base not in p.parents:
         raise ValueError("invalid ui path")
     return p.read_bytes()
+
+
+def _exports_safe_path(filename: str) -> Path:
+    """Resolve an export artifact by filename under <REPO_ROOT>/exports/api.
+
+    Layout today:
+      exports/api/snapshot-<rand>/<filename>
+    """
+    # Only allow a simple filename (no slashes / traversal).
+    if not filename or filename.strip() != filename:
+        raise ValueError("invalid filename")
+    if "/" in filename or "\\" in filename:
+        raise ValueError("invalid filename")
+
+    base = Path(REPO_ROOT).joinpath("exports", "api").resolve()
+
+    # Direct child (rare but harmless to support)
+    direct = (base / filename)
+    if direct.is_file():
+        return direct.resolve()
+
+    # Common case: exports/api/snapshot-<rand>/<filename>
+    if base.is_dir():
+        for d in base.iterdir():
+            if d.is_dir() and d.name.startswith("snapshot-"):
+                cand = (d / filename)
+                if cand.is_file():
+                    return cand.resolve()
+
+    raise FileNotFoundError("artifact not found")
 
 def _is_loopback(host: str) -> bool:
     h = (host or "").strip().lower()
@@ -130,6 +161,32 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urlparse(self.path).path
 
+            if path.startswith("/exports/"):
+                name = path[len("/exports/"):]
+                try:
+                    f = _exports_safe_path(name)
+                    if not f.exists() or not f.is_file():
+                        self.send_response(404)
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
+                    size = f.stat().st_size
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Length", str(size))
+                    self.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                except FileNotFoundError:
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                except Exception:
+                    self.send_response(400)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                return
+
             # Mirror the GET routes we care about, but send headers only.
             if path in ("/", "/index.html", "/ui"):
                 try:
@@ -175,6 +232,27 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urlparse(self.path).path
+
+            # Download export artifacts (server-controlled dir only).
+            if path.startswith("/exports/"):
+                name = path[len("/exports/"):]
+                try:
+                    f = _exports_safe_path(name)
+                    if not f.exists() or not f.is_file():
+                        self._err(404, "not_found", "artifact not found")
+                        return
+                    size = f.stat().st_size
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Length", str(size))
+                    self.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    with f.open("rb") as fp:
+                        shutil.copyfileobj(fp, self.wfile)
+                except Exception as e:
+                    self._err(400, "bad_request", str(e))
+                return
 
             if path in ("/", "/index.html", "/ui"):
                 try:
