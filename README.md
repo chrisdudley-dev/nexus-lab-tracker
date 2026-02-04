@@ -103,3 +103,18 @@ Versioning approach:
 
 - Quickstart: `docs/quickstart.md`
 - Index: `docs/README.md`
+
+
+## Download latest snapshot (Web UI)
+
+After running the snapshot export from the web UI, a **Download latest snapshot** link appears.
+It downloads from:
+
+- `GET /exports/latest` (streams `snapshot.tar.gz`)
+- `HEAD /exports/latest` (headers only)
+
+The server selects the most recent `*.tar.gz` under `exports/api` (server-controlled; `Cache-Control: no-store`).
+
+Local run:
+- `./scripts/lims_api.sh --port 8087`
+

@@ -55,7 +55,6 @@
     </div>
     <small id="hint">Verify enables after export returns an artifact path.</small>
     <div style="margin-top:8px"><a id="downloadLatest" href="/exports/latest" style="display:none">Download latest snapshot</a></div>
-    <div style="margin-top:8px"><a id="downloadLink" href="#" style="display:none">Download latest snapshot</a></div>
   </div>
 
   <div class="card">
@@ -69,8 +68,6 @@
   const btnVerify = document.getElementById("btnSnapshotVerify");
   const downloadLatest = document.getElementById("downloadLatest");
   let lastArtifact = null;
-  const dl = document.getElementById('downloadLink');
-
   const pretty = (x) => { try { return JSON.stringify(x, null, 2); } catch { return String(x); } };
 
   async function apiGet(path) {
@@ -130,18 +127,11 @@ ${pretty(resp.data)}`;
       lastArtifact = d.tarball || d.artifact || d.path || d.snapshot_tarball || null;
 
       if (typeof lastArtifact === "string" && lastArtifact.length > 0) {
-        const parts = lastArtifact.split("/");
-        const filename = parts[parts.length - 1];
-        if (dl) {
-          dl.href = "/exports/" + encodeURIComponent(filename);
-          dl.style.display = "inline";
-        }
         btnVerify.disabled = false;
         hint.textContent = "Ready to verify artifact: " + lastArtifact;
         if (downloadLatest) downloadLatest.style.display = "inline";
       } else {
         btnVerify.disabled = true;
-        if (dl) { dl.style.display = "none"; dl.href = "#"; }
         hint.textContent = "Verify enables after export returns an artifact path.";
         if (downloadLatest) downloadLatest.style.display = "none";
       }
