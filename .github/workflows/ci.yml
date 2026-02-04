@@ -49,3 +49,4 @@ jobs:
           chmod +x ./scripts/lims.sh
           chmod +x ./scripts/migrate.sh
           ./scripts/regress_core.sh
+          ./scripts/regress_api_exports_latest.py
