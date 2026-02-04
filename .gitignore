@@ -41,3 +41,14 @@ data/*.db
 *.rej
 *~
 README.md.bak.*
+
+
+# --- Local artifacts (do not commit) ---
+# Snapshot exports created by local runs / API
+exports/
+**/*.tar.gz
+
+# Editor/patch safety backups used during development
+*.bak
+*.bak.*
+
