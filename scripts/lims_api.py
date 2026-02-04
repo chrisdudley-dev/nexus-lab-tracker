@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 UI_ROOT = os.path.join(REPO_ROOT, "web")
+API_EXPORTS_ROOT = os.path.join(REPO_ROOT, "exports", "api")
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
 
 _SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
@@ -28,6 +29,24 @@ def _mk_api_exports_dir() -> str:
     base = os.path.join(REPO_ROOT, "exports", "api")
     os.makedirs(base, exist_ok=True)
     return tempfile.mkdtemp(prefix="snapshot-", dir=base)
+
+
+def _find_latest_api_tarball() -> str | None:
+    """Return filesystem path to the most recent API-created snapshot tarball."""
+    root = Path(API_EXPORTS_ROOT).resolve()
+    if not root.exists():
+        return None
+    best = None
+    for fp in root.rglob("*.tar.gz"):
+        if not fp.is_file():
+            continue
+        try:
+            m = fp.stat().st_mtime
+        except OSError:
+            continue
+        if best is None or m > best[0]:
+            best = (m, fp)
+    return str(best[1]) if best else None
 
 def _read_ui_file(rel_path: str) -> bytes:
     """
@@ -160,33 +179,34 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         try:
             path = urlparse(self.path).path
-
-            if path.startswith("/exports/"):
-                name = path[len("/exports/"):]
-                try:
-                    f = _exports_safe_path(name)
-                    if not f.exists() or not f.is_file():
-                        self.send_response(404)
-                        self.send_header("Content-Length", "0")
-                        self.end_headers()
-                        return
-                    size = f.stat().st_size
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/gzip")
-                    self.send_header("Content-Length", str(size))
-                    self.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                except FileNotFoundError:
+            if path == "/exports/latest":
+                latest = _find_latest_api_tarball()
+                if not latest:
                     self.send_response(404)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
+                    return
+                fp = Path(latest)
+                try:
+                    st = fp.stat()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Length", str(st.st_size))
+                    self.send_header("Content-Disposition", 'attachment; filename="snapshot.tar.gz"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
                 except Exception:
-                    self.send_response(400)
+                    self.send_response(500)
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                 return
 
+
+            if path.startswith("/exports/") and path != "/exports/latest":
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             # Mirror the GET routes we care about, but send headers only.
             if path in ("/", "/index.html", "/ui"):
                 try:
@@ -234,26 +254,34 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
 
             # Download export artifacts (server-controlled dir only).
-            if path.startswith("/exports/"):
-                name = path[len("/exports/"):]
+            if path == "/exports/latest":
+                latest = _find_latest_api_tarball()
+                if not latest:
+                    self._err(404, "not_found", path=path, method="GET")
+                    return
+                fp = Path(latest)
                 try:
-                    f = _exports_safe_path(name)
-                    if not f.exists() or not f.is_file():
-                        self._err(404, "not_found", "artifact not found")
-                        return
-                    size = f.stat().st_size
+                    st = fp.stat()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/gzip")
-                    self.send_header("Content-Length", str(size))
-                    self.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
+                    self.send_header("Content-Length", str(st.st_size))
+                    self.send_header("Content-Disposition", 'attachment; filename="snapshot.tar.gz"')
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()
-                    with f.open("rb") as fp:
-                        shutil.copyfileobj(fp, self.wfile)
+                    with fp.open("rb") as f:
+                        while True:
+                            chunk = f.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
                 except Exception as e:
-                    self._err(400, "bad_request", str(e))
+                    msg = f"download failed: {type(e).__name__}: {e}\n".encode("utf-8")
+                    self._send_bytes(500, msg, "text/plain; charset=utf-8")
                 return
 
+            if path.startswith("/exports/") and path != "/exports/latest":
+                self._err(404, "not_found", path=path, method="GET")
+                return
             if path in ("/", "/index.html", "/ui"):
                 try:
                     body = _read_ui_file("index.html")

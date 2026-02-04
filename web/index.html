@@ -54,6 +54,7 @@
       <button id="btnSnapshotVerify" disabled>POST /snapshot/verify</button>
     </div>
     <small id="hint">Verify enables after export returns an artifact path.</small>
+    <div style="margin-top:8px"><a id="downloadLatest" href="/exports/latest" style="display:none">Download latest snapshot</a></div>
     <div style="margin-top:8px"><a id="downloadLink" href="#" style="display:none">Download latest snapshot</a></div>
   </div>
 
@@ -66,6 +67,7 @@
   const out = document.getElementById("out");
   const hint = document.getElementById("hint");
   const btnVerify = document.getElementById("btnSnapshotVerify");
+  const downloadLatest = document.getElementById("downloadLatest");
   let lastArtifact = null;
   const dl = document.getElementById('downloadLink');
 
@@ -136,10 +138,12 @@ ${pretty(resp.data)}`;
         }
         btnVerify.disabled = false;
         hint.textContent = "Ready to verify artifact: " + lastArtifact;
+        if (downloadLatest) downloadLatest.style.display = "inline";
       } else {
         btnVerify.disabled = true;
         if (dl) { dl.style.display = "none"; dl.href = "#"; }
         hint.textContent = "Verify enables after export returns an artifact path.";
+        if (downloadLatest) downloadLatest.style.display = "none";
       }
     } catch (e) {
       out.textContent = "ERROR: " + e;
