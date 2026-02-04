@@ -6,12 +6,14 @@ import os
 import tempfile
 import subprocess
 import sys
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from pathlib import Path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 UI_ROOT = os.path.join(REPO_ROOT, "web")
+API_EXPORTS_ROOT = os.path.join(REPO_ROOT, "exports", "api")
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
 
 _SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
@@ -28,6 +30,24 @@ def _mk_api_exports_dir() -> str:
     os.makedirs(base, exist_ok=True)
     return tempfile.mkdtemp(prefix="snapshot-", dir=base)
 
+
+def _find_latest_api_tarball() -> str | None:
+    """Return filesystem path to the most recent API-created snapshot tarball."""
+    root = Path(API_EXPORTS_ROOT).resolve()
+    if not root.exists():
+        return None
+    best = None
+    for fp in root.rglob("*.tar.gz"):
+        if not fp.is_file():
+            continue
+        try:
+            m = fp.stat().st_mtime
+        except OSError:
+            continue
+        if best is None or m > best[0]:
+            best = (m, fp)
+    return str(best[1]) if best else None
+
 def _read_ui_file(rel_path: str) -> bytes:
     """
     Read a UI file from UI_ROOT safely (blocks path traversal).
@@ -37,6 +57,36 @@ def _read_ui_file(rel_path: str) -> bytes:
     if p != base and base not in p.parents:
         raise ValueError("invalid ui path")
     return p.read_bytes()
+
+
+def _exports_safe_path(filename: str) -> Path:
+    """Resolve an export artifact by filename under <REPO_ROOT>/exports/api.
+
+    Layout today:
+      exports/api/snapshot-<rand>/<filename>
+    """
+    # Only allow a simple filename (no slashes / traversal).
+    if not filename or filename.strip() != filename:
+        raise ValueError("invalid filename")
+    if "/" in filename or "\\" in filename:
+        raise ValueError("invalid filename")
+
+    base = Path(REPO_ROOT).joinpath("exports", "api").resolve()
+
+    # Direct child (rare but harmless to support)
+    direct = (base / filename)
+    if direct.is_file():
+        return direct.resolve()
+
+    # Common case: exports/api/snapshot-<rand>/<filename>
+    if base.is_dir():
+        for d in base.iterdir():
+            if d.is_dir() and d.name.startswith("snapshot-"):
+                cand = (d / filename)
+                if cand.is_file():
+                    return cand.resolve()
+
+    raise FileNotFoundError("artifact not found")
 
 def _is_loopback(host: str) -> bool:
     h = (host or "").strip().lower()
@@ -129,7 +179,34 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         try:
             path = urlparse(self.path).path
+            if path == "/exports/latest":
+                latest = _find_latest_api_tarball()
+                if not latest:
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                fp = Path(latest)
+                try:
+                    st = fp.stat()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Length", str(st.st_size))
+                    self.send_header("Content-Disposition", 'attachment; filename="snapshot.tar.gz"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                except Exception:
+                    self.send_response(500)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                return
 
+
+            if path.startswith("/exports/") and path != "/exports/latest":
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             # Mirror the GET routes we care about, but send headers only.
             if path in ("/", "/index.html", "/ui"):
                 try:
@@ -176,6 +253,35 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urlparse(self.path).path
 
+            # Download export artifacts (server-controlled dir only).
+            if path == "/exports/latest":
+                latest = _find_latest_api_tarball()
+                if not latest:
+                    self._err(404, "not_found", path=path, method="GET")
+                    return
+                fp = Path(latest)
+                try:
+                    st = fp.stat()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/gzip")
+                    self.send_header("Content-Length", str(st.st_size))
+                    self.send_header("Content-Disposition", 'attachment; filename="snapshot.tar.gz"')
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    with fp.open("rb") as f:
+                        while True:
+                            chunk = f.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                except Exception as e:
+                    msg = f"download failed: {type(e).__name__}: {e}\n".encode("utf-8")
+                    self._send_bytes(500, msg, "text/plain; charset=utf-8")
+                return
+
+            if path.startswith("/exports/") and path != "/exports/latest":
+                self._err(404, "not_found", path=path, method="GET")
+                return
             if path in ("/", "/index.html", "/ui"):
                 try:
                     body = _read_ui_file("index.html")
