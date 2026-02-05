@@ -8,7 +8,7 @@ import subprocess
 import sys
 import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from pathlib import Path
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -16,7 +16,17 @@ UI_ROOT = os.path.join(REPO_ROOT, "web")
 API_EXPORTS_ROOT = os.path.join(REPO_ROOT, "exports", "api")
 CLI_TIMEOUT_SEC = float(os.environ.get("NEXUS_API_CLI_TIMEOUT_SEC", "30"))
 
+# Allow importing project modules when executed as a script.
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+try:
+    from lims import db as lims_db
+except Exception:
+    lims_db = None
+
 _SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+_CONTAINER_BARCODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+_CONTAINER_KIND_RE    = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
 
 def _validate_sample_id(s: str) -> str:
     v = (s or "").strip()
@@ -24,6 +34,22 @@ def _validate_sample_id(s: str) -> str:
         raise ValueError("invalid sample id")
     return v
 
+
+def _clean_text_field(name: str, v, *, required: bool, max_len: int) -> str | None:
+    if v is None:
+        if required:
+            raise ValueError(f"{name} is required")
+        return None
+    if not isinstance(v, str):
+        raise ValueError(f"{name} must be a string")
+    s = v.strip()
+    if required and not s:
+        raise ValueError(f"{name} is required")
+    if len(s) > max_len:
+        raise ValueError(f"{name} too long (max {max_len})")
+    if any(c in s for c in ("\n","\r","\t")):
+        raise ValueError(f"{name} contains invalid whitespace")
+    return s if s else None
 def _mk_api_exports_dir() -> str:
     # Force exports under repo-controlled directory; never trust a client path.
     base = os.path.join(REPO_ROOT, "exports", "api")
@@ -134,7 +160,7 @@ def _git_rev_short():
         return ""
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "NexusLIMSAPI/0.2"
+    server_version = "NexusLIMSAPI/0.3"
 
     def _send(self, code, obj):
         body = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -225,6 +251,20 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                 return
 
+            if path in ("/app.js", "/style.css"):
+                try:
+                    rel = path.lstrip("/")
+                    body = _read_ui_file(rel)
+                    if rel.endswith(".js"):
+                        ct = "application/javascript; charset=utf-8"
+                    else:
+                        ct = "text/css; charset=utf-8"
+                    self._send_bytes(200, body, ct)
+                except Exception as e:
+                    msg = f"UI asset load failed: {type(e).__name__}: {e}\n".encode("utf-8")
+                    self._send_bytes(500, msg, "text/plain; charset=utf-8")
+                return
+
             if path == "/health":
                 body = json.dumps(
                     {"schema": "nexus_api_health", "ok": True},
@@ -251,7 +291,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            path = urlparse(self.path).path
+            u = urlparse(self.path)
+            path = u.path
 
             # Download export artifacts (server-controlled dir only).
             if path == "/exports/latest":
@@ -291,6 +332,20 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_bytes(500, msg, "text/plain; charset=utf-8")
                 return
 
+            if path in ("/app.js", "/style.css"):
+                try:
+                    rel = path.lstrip("/")
+                    body = _read_ui_file(rel)
+                    if rel.endswith(".js"):
+                        ct = "application/javascript; charset=utf-8"
+                    else:
+                        ct = "text/css; charset=utf-8"
+                    self._send_bytes(200, body, ct)
+                except Exception as e:
+                    msg = f"UI asset load failed: {type(e).__name__}: {e}\n".encode("utf-8")
+                    self._send_bytes(500, msg, "text/plain; charset=utf-8")
+                return
+
             if path == "/health":
                 self._send(200, {
                     "schema": "nexus_api_health",
@@ -307,6 +362,49 @@ class Handler(BaseHTTPRequestHandler):
                     "schema_version": 1,
                     "ok": True,
                     "git_rev": _git_rev_short(),
+                })
+                return
+
+            if path == "/container/list":
+                if lims_db is None:
+                    self._err(500, "internal_error", "lims_db import failed")
+                    return
+                qs = parse_qs(u.query or "")
+                limit = 25
+                if "limit" in qs and qs["limit"]:
+                    try:
+                        limit = int(str(qs["limit"][0]).strip())
+                    except Exception:
+                        self._err(400, "bad_request", "limit must be an int")
+                        return
+                if limit < 0:
+                    self._err(400, "bad_request", "limit must be >= 0")
+                    return
+                if limit > 500:
+                    limit = 500
+                conn = lims_db.connect()
+                try:
+                    if hasattr(lims_db, "apply_migrations"):
+                        lims_db.apply_migrations(conn)
+                    elif hasattr(lims_db, "init_db"):
+                        lims_db.init_db(conn)
+                    rows = conn.execute(
+                        "SELECT * FROM containers ORDER BY created_at DESC, id DESC LIMIT ?",
+                        (limit,),
+                    ).fetchall()
+                    containers = [dict(r) for r in rows]
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                self._send(200, {
+                    "schema": "nexus_container_list",
+                    "schema_version": 1,
+                    "ok": True,
+                    "limit": limit,
+                    "count": len(containers),
+                    "containers": containers,
                 })
                 return
 
@@ -413,6 +511,55 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._err(400, "command_failed", rc=rc, stderr=err)
                 return
+            # POST /container/add
+            if path == "/container/add":
+                if lims_db is None:
+                    self._err(500, "internal_error", "lims_db import failed")
+                    return
+                try:
+                    barcode = _clean_text_field("barcode", body.get("barcode"), required=True, max_len=128)
+                    kind = _clean_text_field("kind", body.get("kind"), required=True, max_len=64)
+                    if not _CONTAINER_BARCODE_RE.match(barcode):
+                        raise ValueError("invalid container barcode")
+                    if not _CONTAINER_KIND_RE.match(kind):
+                        raise ValueError("invalid kind")
+                    location = _clean_text_field("location", body.get("location"), required=False, max_len=128)
+                except ValueError as e:
+                    self._err(400, "bad_request", str(e))
+                    return
+                conn = lims_db.connect()
+                try:
+                    if hasattr(lims_db, "apply_migrations"):
+                        lims_db.apply_migrations(conn)
+                    elif hasattr(lims_db, "init_db"):
+                        lims_db.init_db(conn)
+                    if conn.execute("SELECT 1 FROM containers WHERE barcode = ? LIMIT 1", (barcode,)).fetchone():
+                        self._err(400, "bad_request", f"container barcode already exists: \'{barcode}\'")
+                        return
+                    now = lims_db.utc_now_iso() if hasattr(lims_db, "utc_now_iso") else ""
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO containers (barcode, kind, location, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                        (barcode, kind, location, now, now),
+                    )
+                    conn.commit()
+                    cid = cur.lastrowid
+                    row = conn.execute("SELECT * FROM containers WHERE id = ?", (cid,)).fetchone()
+                    container = dict(row) if row else {"id": cid, "barcode": barcode, "kind": kind, "location": location}
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                self._send(200, {
+                    "schema": "nexus_container",
+                    "schema_version": 1,
+                    "ok": True,
+                    "container": container,
+                })
+                return
+
+
 
             self._err(404, "not_found", path=path, method="POST")
         except Exception as e:
