@@ -585,7 +585,12 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as ex:
                     self._err(500, "internal_error", "sample_add exception: %s: %s" % (type(ex).__name__, ex))
                     return
-                self._send(200, doc)
+                resp = {"schema": "nexus_sample", "schema_version": 1, "ok": True}
+                if isinstance(doc, dict):
+                    resp.update(doc)
+                else:
+                    resp["sample"] = doc
+                self._send(200, resp)
                 return
 
             if path == "/sample/report":
