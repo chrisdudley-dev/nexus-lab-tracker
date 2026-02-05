@@ -90,6 +90,14 @@ def main():
             raise SystemExit(f"FAIL: POST /sample/add status={st} body={raw[:500]!r}")
 
         doc = json.loads(raw.decode("utf-8", errors="replace"))
+        # envelope assertions
+        if doc.get("schema") != "nexus_sample":
+            raise SystemExit(f"FAIL: schema expected nexus_sample got: {doc.get('schema')}")
+        if doc.get("schema_version") != 1:
+            raise SystemExit(f"FAIL: schema_version expected 1 got: {doc.get('schema_version')}")
+        if doc.get("ok") is not True:
+            raise SystemExit(f"FAIL: ok expected true got: {doc.get('ok')}")
+
         if "generated_at" not in doc or "sample" not in doc or not isinstance(doc["sample"], dict):
             raise SystemExit(f"FAIL: unexpected response shape: {doc}")
 

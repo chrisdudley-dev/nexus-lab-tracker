@@ -105,3 +105,44 @@ Response (200): schema nexus_container (v1)
 
 ### GET /container/list?limit=25
 Response (200): schema nexus_container_list (v1)
+
+## POST /sample/add
+
+Create a sample record (for the web sample workflow).
+
+### Request (JSON)
+
+- `external_id` (string, optional) — if omitted, server generates one (DEV-prefixed).
+- `specimen_type` (string, required)
+- `status` (string, optional; default `received`) — allowed: `received`, `processing`, `analyzing`, `completed`
+- `notes` (string, optional)
+- `received_at` (string, optional ISO8601; default now)
+- `container` (string, optional) — container id or barcode
+
+Example:
+```json
+{
+  "external_id": "API-001",
+  "specimen_type": "saliva"
+}
+```
+
+### Response 200 (JSON)
+
+```json
+{
+  "schema": "nexus_sample",
+  "schema_version": 1,
+  "ok": true,
+  "generated_at": "2026-02-05T20:00:00Z",
+  "sample": {
+    "external_id": "API-001",
+    "specimen_type": "saliva",
+    "status": "received"
+  }
+}
+```
+
+### Errors
+
+Standard API error envelope (HTTP 400/500) with a descriptive message.
