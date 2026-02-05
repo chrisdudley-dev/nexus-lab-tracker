@@ -118,6 +118,62 @@ def main():
                 body = e.read()
                 raise SystemExit(f"FAIL: expected 400 for dup external_id, got {e.code} body={body[:500]!r}")
 
+        # 3) Invalid JSON body should return nexus_api_error (400)
+
+        req = Request(
+
+            base + "/sample/add",
+
+            method="POST",
+
+            data=b"{not-json}",
+
+            headers={"Content-Type": "application/json"},
+
+        )
+
+        try:
+
+            urlopen(req, timeout=8)
+
+            raise SystemExit("FAIL: invalid JSON unexpectedly succeeded")
+
+        except HTTPError as e:
+
+            body = e.read()
+
+            if e.code != 400:
+
+                raise SystemExit(f"FAIL: expected 400 for invalid JSON, got {e.code} body={body[:500]!r}")
+
+            try:
+
+                j = json.loads(body.decode("utf-8", errors="replace"))
+
+            except Exception as ex:
+
+                raise SystemExit(f"FAIL: invalid JSON error body not JSON: {ex} body={body[:500]!r}")
+
+            if j.get("schema") != "nexus_api_error":
+
+                raise SystemExit(f"FAIL: schema expected nexus_api_error got: {j.get('schema')}")
+
+            if j.get("schema_version") != 1:
+
+                raise SystemExit(f"FAIL: schema_version expected 1 got: {j.get('schema_version')}")
+
+            if j.get("ok") is not False:
+
+                raise SystemExit(f"FAIL: ok expected false got: {j.get('ok')}")
+
+            if j.get("error") != "bad_request":
+
+                raise SystemExit(f"FAIL: error expected bad_request got: {j.get('error')}")
+
+            if "invalid JSON body" not in (j.get("detail") or ""):
+
+                raise SystemExit(f"FAIL: detail did not mention invalid JSON body: {j.get('detail')}")
+
         print("OK: /sample/add creates sample and rejects duplicate external_id.")
     finally:
         try:
