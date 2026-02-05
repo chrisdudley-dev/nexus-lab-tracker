@@ -484,6 +484,85 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # POST /sample/report
+            if path == "/sample/add":
+                # body already read earlier in do_POST
+                try:
+                    external_id = _clean_text_field("external_id", body.get("external_id"), required=True, max_len=64)
+                    specimen_type = _clean_text_field("specimen_type", body.get("specimen_type"), required=True, max_len=64)
+                    status = _clean_text_field("status", body.get("status"), required=False, max_len=32)
+                    notes = _clean_text_field("notes", body.get("notes"), required=False, max_len=5000)
+                    received_at = _clean_text_field("received_at", body.get("received_at"), required=False, max_len=64)
+                    container = _clean_text_field("container", body.get("container"), required=False, max_len=64)
+
+                    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", external_id):
+                        raise ValueError("invalid external_id")
+                    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", specimen_type):
+                        raise ValueError("invalid specimen_type")
+                    if status and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,31}", status):
+                        raise ValueError("invalid status")
+                    if container:
+                        if container.isdigit():
+                            pass
+                        elif _CONTAINER_BARCODE_RE.match(container):
+                            pass
+                        else:
+                            raise ValueError("invalid container")
+                except ValueError as e:
+                    self._err(400, "bad_request", str(e))
+                    return
+
+                cmd = ["bash", "scripts/lims.sh", "sample", "add",
+                       "--external-id", external_id,
+                       "--specimen-type", specimen_type]
+                if status: cmd += ["--status", status]
+                if notes: cmd += ["--notes", notes]
+                if received_at: cmd += ["--received-at", received_at]
+                if container: cmd += ["--container", container]
+
+                try:
+                    r = subprocess.run(
+                        cmd, cwd=str(REPO_ROOT), text=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        timeout=CLI_TIMEOUT_SEC
+                    )
+                except subprocess.TimeoutExpired:
+                    self._err(504, "command_timeout", "sample add timed out")
+                    return
+
+                if r.returncode != 0:
+                    msg = (r.stderr or r.stdout or "sample add failed").strip()
+                    self._err(400, "command_failed", msg[:8000])
+                    return
+
+                sample = {"external_id": external_id}
+                if lims_db is not None:
+                    try:
+                        conn = lims_db.connect()
+                        try:
+                            if hasattr(lims_db, "apply_migrations"):
+                                lims_db.apply_migrations(conn)
+                            row = conn.execute(
+                                "SELECT * FROM samples WHERE external_id = ? ORDER BY id DESC LIMIT 1",
+                                (external_id,),
+                            ).fetchone()
+                            if row is not None:
+                                sample = dict(row)
+                        finally:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                self._send(200, {
+                    "schema": "nexus_sample",
+                    "schema_version": 1,
+                    "ok": True,
+                    "sample": sample,
+                })
+                return
+
             if path == "/sample/report":
                 identifier = body.get("identifier", None)
                 if not identifier or not isinstance(identifier, str):
