@@ -70,5 +70,6 @@ main "$@"
 bash scripts/regress_no_paste_garbage.sh
 
 # API_REGRESS
+python3 scripts/regress_api_sample_add.py
 python3 scripts/regress_api_snapshot_export_verify.py
 ./scripts/regress_api_container_workflow.py
