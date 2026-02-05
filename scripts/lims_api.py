@@ -35,6 +35,94 @@ def _validate_sample_id(s: str) -> str:
     return v
 
 
+def _api_sample_add(payload: dict) -> dict:
+    """
+    Create a sample without spawning a subprocess (avoids CodeQL 'Uncontrolled command line').
+
+    Input (JSON object):
+      specimen_type (required)
+      external_id   (optional)
+      status        (optional; default 'received')
+      notes         (optional)
+      received_at   (optional ISO8601; default now)
+      container     (optional id or barcode)
+
+    Returns:
+      {"generated_at": <iso>, "sample": {...}}
+    """
+    from lims import db as lims_db
+    from lims.cli import ensure_db, resolve_container_id, generate_external_id, utc_now_iso
+
+    if not isinstance(payload, dict):
+        raise ValueError("body must be a JSON object")
+
+    conn = lims_db.connect()
+    ensure_db(conn)
+
+    now = utc_now_iso()
+
+    specimen_type = (str(payload.get("specimen_type") or "")).strip()
+    if not specimen_type:
+        raise ValueError("specimen_type is required")
+
+    status_raw = (str(payload.get("status") or "received")).strip().lower()
+    aliases = {"registered": "received", "testing": "processing", "analysis": "analyzing", "done": "completed"}
+    status = aliases.get(status_raw, status_raw)
+    allowed = {"received", "processing", "analyzing", "completed"}
+    if status not in allowed:
+        raise ValueError("invalid status. Allowed: received, processing, analyzing, completed")
+
+    notes = payload.get("notes")
+    notes = (str(notes).strip() if notes is not None else None) or None
+
+    received_at = payload.get("received_at")
+    received_at = (str(received_at).strip() if received_at is not None else now) or now
+
+    provided = payload.get("external_id")
+    if provided is not None:
+        external_id = str(provided).strip()
+        if not external_id:
+            raise ValueError("external_id cannot be empty")
+        if conn.execute("SELECT 1 FROM samples WHERE external_id = ? LIMIT 1", (external_id,)).fetchone():
+            raise ValueError("sample external_id already exists")
+    else:
+        external_id = ""
+        for _ in range(10):
+            candidate = generate_external_id("DEV")
+            if not conn.execute("SELECT 1 FROM samples WHERE external_id = ? LIMIT 1", (candidate,)).fetchone():
+                external_id = candidate
+                break
+        if not external_id:
+            raise ValueError("could not generate a unique external_id; retry")
+
+    container_id = None
+    container = payload.get("container")
+    if container is not None:
+        ident = str(container).strip()
+        if not ident:
+            raise ValueError("container cannot be empty")
+        container_id = resolve_container_id(conn, ident)
+        if container_id is None:
+            raise ValueError("container not found")
+
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO samples (external_id, specimen_type, status, notes, received_at, created_at, updated_at, container_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (external_id, specimen_type, status, notes, received_at, now, now, container_id),
+    )
+    conn.commit()
+
+    row = conn.execute("SELECT * FROM samples WHERE id = ?", (cur.lastrowid,)).fetchone()
+    if not row:
+        raise ValueError("insert succeeded but fetch failed")
+
+    sample_obj = dict(row)
+    return {"generated_at": utc_now_iso(), "sample": sample_obj}
+
+
 def _clean_text_field(name: str, v, *, required: bool, max_len: int) -> str | None:
     if v is None:
         if required:
@@ -484,83 +572,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             # POST /sample/report
+            # POST /sample/add
             if path == "/sample/add":
-                # body already read earlier in do_POST
                 try:
-                    external_id = _clean_text_field("external_id", body.get("external_id"), required=True, max_len=64)
-                    specimen_type = _clean_text_field("specimen_type", body.get("specimen_type"), required=True, max_len=64)
-                    status = _clean_text_field("status", body.get("status"), required=False, max_len=32)
-                    notes = _clean_text_field("notes", body.get("notes"), required=False, max_len=5000)
-                    received_at = _clean_text_field("received_at", body.get("received_at"), required=False, max_len=64)
-                    container = _clean_text_field("container", body.get("container"), required=False, max_len=64)
-
-                    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", external_id):
-                        raise ValueError("invalid external_id")
-                    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", specimen_type):
-                        raise ValueError("invalid specimen_type")
-                    if status and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,31}", status):
-                        raise ValueError("invalid status")
-                    if container:
-                        if container.isdigit():
-                            pass
-                        elif _CONTAINER_BARCODE_RE.match(container):
-                            pass
-                        else:
-                            raise ValueError("invalid container")
-                except ValueError as e:
-                    self._err(400, "bad_request", str(e))
+                    payload = locals().get("body", None)
+                    if payload is None:
+                        payload = self._read_json()
+                    doc = _api_sample_add(payload)
+                except ValueError as ex:
+                    self._err(400, "bad_request", str(ex))
                     return
-
-                cmd = ["bash", "scripts/lims.sh", "sample", "add",
-                       "--external-id", external_id,
-                       "--specimen-type", specimen_type]
-                if status: cmd += ["--status", status]
-                if notes: cmd += ["--notes", notes]
-                if received_at: cmd += ["--received-at", received_at]
-                if container: cmd += ["--container", container]
-
-                try:
-                    r = subprocess.run(
-                        cmd, cwd=str(REPO_ROOT), text=True,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        timeout=CLI_TIMEOUT_SEC
-                    )
-                except subprocess.TimeoutExpired:
-                    self._err(504, "command_timeout", "sample add timed out")
+                except Exception as ex:
+                    self._err(500, "internal_error", "sample_add exception: %s: %s" % (type(ex).__name__, ex))
                     return
-
-                if r.returncode != 0:
-                    msg = (r.stderr or r.stdout or "sample add failed").strip()
-                    self._err(400, "command_failed", msg[:8000])
-                    return
-
-                sample = {"external_id": external_id}
-                if lims_db is not None:
-                    try:
-                        conn = lims_db.connect()
-                        try:
-                            if hasattr(lims_db, "apply_migrations"):
-                                lims_db.apply_migrations(conn)
-                            row = conn.execute(
-                                "SELECT * FROM samples WHERE external_id = ? ORDER BY id DESC LIMIT 1",
-                                (external_id,),
-                            ).fetchone()
-                            if row is not None:
-                                sample = dict(row)
-                        finally:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-                self._send(200, {
-                    "schema": "nexus_sample",
-                    "schema_version": 1,
-                    "ok": True,
-                    "sample": sample,
-                })
+                self._send(200, doc)
                 return
 
             if path == "/sample/report":
