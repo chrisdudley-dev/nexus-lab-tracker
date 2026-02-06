@@ -134,6 +134,18 @@
     if (!ident) return write({ok:false, error:"identifier required"});
     try {
       const j = await fetchJson("/sample/show" + qs({identifier: ident}));
+      // AUTOFILL_STATUS_FROM_SHOW: if API returns sample.status, reflect it in the status dropdown
+      try {
+        const st = (j && j.sample && j.sample.status) ? String(j.sample.status).trim() : "";
+        if (st && $("statusValue")) {
+          const sel = $("statusValue");
+          const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
+          if (has) sel.value = st;
+        }
+      } catch (e) {
+        // ignore UI autofill failures
+      }
+
       write(j);
     } catch (e) {
       write(e);
