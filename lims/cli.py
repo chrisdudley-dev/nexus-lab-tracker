@@ -109,7 +109,10 @@ def resolve_container_id(conn, identifier: str) -> Optional[int]:
   identifier = (identifier or "").strip()
   key, value = parse_container_identifier(identifier)
 
-  row = conn.execute(f"SELECT id FROM containers WHERE {key} = ?", (value,)).fetchone()
+  if key == "id":
+    row = conn.execute("SELECT id FROM containers WHERE id = ?", (value,)).fetchone()
+  else:
+    row = conn.execute("SELECT id FROM containers WHERE barcode = ?", (value,)).fetchone()
   if not row and key == "id":
     # If numeric ID doesn't exist, treat original token as barcode.
     row = conn.execute("SELECT id FROM containers WHERE barcode = ?", (identifier,)).fetchone()
