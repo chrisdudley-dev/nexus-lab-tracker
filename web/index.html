@@ -82,6 +82,7 @@
 <script>
 /* Samples UI: /sample/list, /sample/show, /sample/events */
 (function nexusSampleUI(){
+  function init(){
   const out = document.getElementById("samplesOut");
   if (!out) return;
 
@@ -158,6 +159,9 @@
   $("sampleIdent").addEventListener("input", () => { $("eventsIdent").value = $("sampleIdent").value; });
 
   write({ok:true, hint:"Use List / Show / Events. Output appears here."});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 </script>
 
