@@ -150,10 +150,34 @@
       write(e);
     }
   }
+  async function doStatus(){
+    const ident = (($("sampleIdent").value || $("eventsIdent").value) || "").trim();
+    if (!ident) return write({ok:false, error:"identifier required"});
+
+    const status = ($("statusValue").value || "").trim();
+    if (!status) return write({ok:false, error:"status required"});
+
+    const msg = ($("statusMessage").value || "").trim();
+    const body = { identifier: ident, status: status };
+    if (msg) body.message = msg;
+
+    try {
+      const j = await fetchJson("/sample/status", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body),
+      });
+      write(j);
+    } catch (e) {
+      write(e);
+    }
+  }
+
 
   $("btnSampleList").addEventListener("click", doList);
   $("btnSampleShow").addEventListener("click", doShow);
   $("btnSampleEvents").addEventListener("click", doEvents);
+  $("btnSampleStatus").addEventListener("click", doStatus);
 
   // helpful default: mirror identifier fields
   $("sampleIdent").addEventListener("input", () => { $("eventsIdent").value = $("sampleIdent").value; });
@@ -203,6 +227,27 @@
       </label>
       <label>Limit
         <input id="eventsLimit" type="number" min="0" max="500" value="100" style="width:6em" />
+      </label>
+    </div>
+
+    
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
+      <button id="btnSampleStatus" type="button">Set Status</button>
+      <label>Status
+        <select id="statusValue">
+          <option value="">(choose)</option>
+          <option value="received">received</option>
+          <option value="processing">processing</option>
+          <option value="analyzing">analyzing</option>
+          <option value="completed">completed</option>
+          <option value="registered">registered → received</option>
+          <option value="testing">testing → processing</option>
+          <option value="analysis">analysis → analyzing</option>
+          <option value="done">done → completed</option>
+        </select>
+      </label>
+      <label>Message
+        <input id="statusMessage" placeholder="optional note" size="30" />
       </label>
     </div>
 
