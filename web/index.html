@@ -78,5 +78,136 @@
     <pre id="out">(run a request)</pre>
   </div>
   <script src="/app.js"></script>
+
+<script>
+/* Samples UI: /sample/list, /sample/show, /sample/events */
+(function nexusSampleUI(){
+  function init(){
+  const out = document.getElementById("samplesOut");
+  if (!out) return;
+
+  const $ = (id) => document.getElementById(id);
+
+  function pretty(x){
+    try { return JSON.stringify(x, null, 2); }
+    catch { return String(x); }
+  }
+  function write(x){ out.textContent = pretty(x); }
+
+  async function fetchJson(path, opts){
+    const headers = Object.assign({"Accept":"application/json"}, (opts && opts.headers) || {});
+    const res = await fetch(path, Object.assign({}, opts || {}, { headers }));
+    const text = await res.text();
+    let j;
+    try { j = JSON.parse(text); } catch { j = { raw: text }; }
+    if (!res.ok) throw j;
+    return j;
+  }
+
+  function qs(obj){
+    const parts = [];
+    for (const [k,v] of Object.entries(obj)){
+      if (v === null || v === undefined) continue;
+      const sv = String(v).trim();
+      if (!sv) continue;
+      parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(sv));
+    }
+    return parts.length ? ("?" + parts.join("&")) : "";
+  }
+
+  async function doList(){
+    const q = qs({
+      limit: $("sampleLimit").value,
+      status: $("sampleStatus").value,
+      container: $("sampleContainer").value,
+    });
+    try {
+      const j = await fetchJson("/sample/list" + q);
+      write(j);
+    } catch (e) {
+      write(e);
+    }
+  }
+
+  async function doShow(){
+    const ident = ($("sampleIdent").value || "").trim();
+    if (!ident) return write({ok:false, error:"identifier required"});
+    try {
+      const j = await fetchJson("/sample/show" + qs({identifier: ident}));
+      write(j);
+    } catch (e) {
+      write(e);
+    }
+  }
+
+  async function doEvents(){
+    const ident = ($("eventsIdent").value || "").trim();
+    if (!ident) return write({ok:false, error:"identifier required"});
+    try {
+      const j = await fetchJson("/sample/events" + qs({identifier: ident, limit: $("eventsLimit").value}));
+      write(j);
+    } catch (e) {
+      write(e);
+    }
+  }
+
+  $("btnSampleList").addEventListener("click", doList);
+  $("btnSampleShow").addEventListener("click", doShow);
+  $("btnSampleEvents").addEventListener("click", doEvents);
+
+  // helpful default: mirror identifier fields
+  $("sampleIdent").addEventListener("input", () => { $("eventsIdent").value = $("sampleIdent").value; });
+
+  write({ok:true, hint:"Use List / Show / Events. Output appears here."});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+
+
+  <!-- Samples (read endpoints) -->
+  <section id="samplesPanel" style="margin-top:14px">
+    <h2>Samples</h2>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+      <button id="btnSampleList" type="button">List</button>
+      <label>Status
+        <select id="sampleStatus">
+          <option value="">(any)</option>
+          <option value="received">received</option>
+          <option value="processing">processing</option>
+          <option value="analyzing">analyzing</option>
+          <option value="completed">completed</option>
+        </select>
+      </label>
+      <label>Container
+        <input id="sampleContainer" placeholder="id or barcode" size="18" />
+      </label>
+      <label>Limit
+        <input id="sampleLimit" type="number" min="0" max="500" value="50" style="width:6em" />
+      </label>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
+      <button id="btnSampleShow" type="button">Show</button>
+      <label>Identifier
+        <input id="sampleIdent" placeholder="external_id or id" size="24" />
+      </label>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
+      <button id="btnSampleEvents" type="button">Events</button>
+      <label>Identifier
+        <input id="eventsIdent" placeholder="external_id or id" size="24" />
+      </label>
+      <label>Limit
+        <input id="eventsLimit" type="number" min="0" max="500" value="100" style="width:6em" />
+      </label>
+    </div>
+
+    <pre id="samplesOut" style="margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; max-height:360px; overflow:auto; white-space:pre-wrap"></pre>
+  </section>
+
 </body>
 </html>
