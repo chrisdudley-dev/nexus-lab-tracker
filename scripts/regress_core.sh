@@ -23,6 +23,9 @@ main() {
 
   echo "== Core Regressions =="
 
+echo "-> ./scripts/regress_web_ui_status_headless.sh"
+./scripts/regress_web_ui_status_headless.sh
+
   # 1) Input/CLI contract regressions (cheap, fast)
   run ./scripts/regress_list_container_whitespace_error.py
   run ./scripts/regress_limit_semantics.py
