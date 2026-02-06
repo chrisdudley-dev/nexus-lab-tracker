@@ -180,6 +180,20 @@
         body: JSON.stringify(body),
       });
       write(j);
+      // STATUS_POST_AUTOREFRESH_V1: if status update succeeded, refresh Show output
+      try {
+        // if API returns canonical status, reflect it immediately (doShow() also autofills)
+        const st = (j && j.status) ? String(j.status).trim() : "";
+        if (st && $("statusValue")) {
+          const sel = $("statusValue");
+          const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
+          if (has) sel.value = st;
+        }
+      } catch (e) { /* ignore */ }
+      if (j && j.ok) {
+        try { await doShow(); } catch (e) { /* ignore */ }
+      }
+
     } catch (e) {
       write(e);
     }
