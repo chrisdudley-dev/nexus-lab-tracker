@@ -146,3 +146,24 @@ Example:
 ### Errors
 
 Standard API error envelope (HTTP 400/500) with a descriptive message.
+
+### GET /sample/list
+Query params:
+- `limit` (int, default 25, max 500)
+- `status` (optional: received|processing|analyzing|completed; aliases: registered->received, testing->processing, analysis->analyzing, done->completed)
+- `container` (optional: container id or barcode)
+
+Response schema: `nexus_sample_list` (schema_version=1)
+
+### GET /sample/show
+Query params:
+- `identifier` (required: sample id or external_id)
+
+Response schema: `nexus_sample` (schema_version=1)
+
+### GET /sample/events
+Query params:
+- `identifier` (required: sample id or external_id)
+- `limit` (int, default 100, max 500)
+
+Response schema: `nexus_sample_events` (schema_version=1)

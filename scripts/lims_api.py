@@ -52,7 +52,6 @@ def _api_sample_add(payload: dict) -> dict:
     """
     from lims import db as lims_db
     from lims.cli import ensure_db, resolve_container_id, generate_external_id, utc_now_iso
-
     if not isinstance(payload, dict):
         raise ValueError("body must be a JSON object")
 
@@ -247,6 +246,14 @@ def _git_rev_short():
     except Exception:
         return ""
 
+
+# Sample read endpoints (isolated so failures don't mask lims_db import)
+try:
+    from lims.api_sample_read import handle_sample_read_get
+except Exception:
+    def handle_sample_read_get(*args, **kwargs):
+        return False
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "NexusLIMSAPI/0.3"
 
@@ -381,6 +388,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             u = urlparse(self.path)
             path = u.path
+
+            if handle_sample_read_get(self, path, u, lims_db):
+                return
 
             # Download export artifacts (server-controlled dir only).
             if path == "/exports/latest":
