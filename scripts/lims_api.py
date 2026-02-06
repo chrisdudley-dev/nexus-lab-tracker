@@ -254,6 +254,14 @@ except Exception:
     def handle_sample_read_get(*args, **kwargs):
         return False
 
+
+# Sample status endpoint (isolated so failures don't mask lims_db import)
+try:
+    from lims.api_sample_status import handle_sample_status_post
+except Exception:
+    def handle_sample_status_post(*args, **kwargs):
+        return False
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "NexusLIMSAPI/0.3"
 
@@ -515,6 +523,15 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def do_POST(self):
+
+        u = urlparse(self.path)
+
+        path = u.path
+
+        if handle_sample_status_post(self, path, u, lims_db):
+
+            return
+
         try:
             path = urlparse(self.path).path
 

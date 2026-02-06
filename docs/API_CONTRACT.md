@@ -167,3 +167,11 @@ Query params:
 - `limit` (int, default 100, max 500)
 
 Response schema: `nexus_sample_events` (schema_version=1)
+
+
+### POST /sample/status
+Body (JSON):
+- `identifier` (required: sample id or external_id)
+- `status` (required: received|processing|analyzing|completed; aliases: registered->received, testing->processing, analysis->analyzing, done->completed)
+- `message` (optional: note; best-effort recorded to sample_events if table exists)
+Response schema: `nexus_sample_status_update` (schema_version=1)
