@@ -273,7 +273,53 @@ def main() -> int:
 
                     pass
 
-            insert_or_ignore(conn, "samples", payload)
+            # DEMO_EXCLUSIVE_GUARD_V1: avoid exclusive-container constraint + make seeding idempotent
+
+            ext = str(payload.get('external_id') or '').strip()
+
+            if ext:
+
+                # If sample already exists, skip insert (idempotent)
+
+                row = conn.execute('SELECT 1 FROM samples WHERE external_id=? LIMIT 1', (ext,)).fetchone()
+
+                if row:
+
+                    continue
+
+            cid = None
+
+            if ext and exclusive_ids:
+
+                m = re.search(r'(\d+)', ext)
+
+                idx = max(0, int(m.group(1)) - 1) if m else 0
+
+                if idx < len(exclusive_ids):
+
+                    cand = exclusive_ids[idx]
+
+                    # Only assign if container currently unoccupied
+
+                    occ = conn.execute('SELECT 1 FROM samples WHERE container_id=? LIMIT 1', (cand,)).fetchone()
+
+                    if not occ:
+
+                        cid = cand
+
+            if cid is None:
+
+                cid = fallback_id
+
+            if cid is not None:
+
+                payload['container_id'] = cid
+
+            else:
+
+                payload.pop('container_id', None)
+
+            insert_or_ignore(conn, 'samples', payload)
 
             sid = get_id(conn, "samples", "external_id = ?", (ext,))
             if sid is not None:
