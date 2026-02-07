@@ -95,6 +95,51 @@ def insert_event_if_missing(conn: sqlite3.Connection, sample_id: int, *, event_t
     conn.execute(sql, [payload[k] for k in keys])
     return True
 
+
+def _demo_container_is_exclusive(conn, container_id: int) -> bool:
+    try:
+        cols = table_cols(conn, "containers")
+        if "exclusive" in cols:
+            row = conn.execute("SELECT exclusive FROM containers WHERE id=? LIMIT 1", (container_id,)).fetchone()
+            return bool(row and int(row[0]) == 1)
+        # fallback: treat tube/vial as exclusive if explicit flag doesn't exist
+        if "kind" in cols:
+            row = conn.execute("SELECT kind FROM containers WHERE id=? LIMIT 1", (container_id,)).fetchone()
+            k = (row[0] if row else "") or ""
+            return str(k).strip().lower() in ("tube", "vial")
+    except Exception:
+        pass
+    return False
+
+def _demo_container_is_occupied(conn, container_id: int) -> bool:
+    try:
+        row = conn.execute("SELECT 1 FROM samples WHERE container_id=? LIMIT 1", (container_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+def _demo_idx_from_external_id(external_id: str) -> int:
+    # "S-001" -> 0, "S-012" -> 11; unknown -> 0
+    m = re.search(r"(\\d+)", external_id or "")
+    if not m:
+        return 0
+    try:
+        return max(0, int(m.group(1)) - 1)
+    except Exception:
+        return 0
+
+def _demo_choose_container(conn, external_id: str, exclusive_ids, fallback_id):
+    idx = _demo_idx_from_external_id(external_id)
+    # deterministic: first few samples try exclusive containers in order, rest go to fallback
+    cid = None
+    if exclusive_ids and idx < len(exclusive_ids):
+        cid = exclusive_ids[idx]
+        if cid and _demo_container_is_exclusive(conn, cid) and _demo_container_is_occupied(conn, cid):
+            cid = None
+    if cid is None:
+        cid = fallback_id
+    return cid
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Seed deterministic demo data (idempotent).")
     ap.add_argument("--n", type=int, default=12, help="Number of samples to seed (default: 12)")
@@ -129,6 +174,10 @@ def main() -> int:
         vial1  = get_id(conn, "containers", "barcode = ?", ("VIAL-1",))
         plate1 = get_id(conn, "containers", "barcode = ?", ("PLATE-1",))
 
+        # Demo rule: only 1 sample per exclusive container; remainder go to plate
+        exclusive_ids = [cid for cid in (tube1, tube2, vial1) if cid]
+        fallback_id = plate1
+
         exclusive_slots = [tube1, tube2, vial1]
         plate_slot = plate1
 
@@ -149,6 +198,28 @@ def main() -> int:
             ts = now_iso()
             for k in ("created_at", "occurred_at", "timestamp", "ts"):
                 payload[k] = ts
+
+            # Choose a safe container (avoid exclusive-container constraint on reruns)
+
+            ext = str(payload.get("external_id") or "").strip()
+
+            if ext:
+
+                try:
+
+                    cid = _demo_choose_container(conn, ext, exclusive_ids, fallback_id)
+
+                    if cid is not None:
+
+                        payload["container_id"] = cid
+
+                    else:
+
+                        payload.pop("container_id", None)
+
+                except Exception:
+
+                    pass
 
             insert_or_ignore(conn, "samples", payload)
 
