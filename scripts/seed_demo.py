@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import os
 import sqlite3
 from datetime import datetime, timezone
