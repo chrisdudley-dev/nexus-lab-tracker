@@ -77,7 +77,20 @@
     <h2>Output</h2>
     <pre id="out">(run a request)</pre>
   </div>
-  <script src="/app.js"></script>
+  
+
+
+  
+  <div class="card" id="kanbanCard">
+    <h2>Kanban Board (MVP)</h2>
+    <div class="row">
+      <button id="btnBoardRefresh" type="button">Refresh board</button>
+      <label style="margin-left:10px">Limit
+        <input id="boardLimit" type="number" min="0" max="500" value="200" style="width:7em" />
+      </label>
+    </div>
+
+<script src="/app.js"></script>
 
 <script>
 /* Samples UI: /sample/list, /sample/show, /sample/events */
@@ -183,7 +196,7 @@
       // STATUS_POST_AUTOREFRESH_V1: if status update succeeded, refresh Show output
       try {
         // if API returns canonical status, reflect it immediately (doShow() also autofills)
-        const st = (j && j.status) ? String(j.status).trim() : "";
+        const st = (j && (j.to_status || j.status)) ? String((j.to_status || j.status)).trim() : "";
         if (st && $("statusValue")) {
           const sel = $("statusValue");
           const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
@@ -214,7 +227,9 @@
   else init();
 })();
 </script>
-
+    <div id="board" class="board" style="margin-top:10px"></div>
+    <small class="muted">Move cards with the dropdown. Drag/drop is post-MVP.</small>
+  </div>
 
   <!-- Samples (read endpoints) -->
   <section id="samplesPanel" style="margin-top:14px">

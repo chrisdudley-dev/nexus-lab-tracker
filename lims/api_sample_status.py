@@ -116,17 +116,16 @@ def _insert_sample_event(
     elif "type" in colset:
         payload["type"] = event_type
 
-    # timestamps vary
+    # timestamps vary (some schemas require multiple NOT NULL timestamps)
     ts = _now_iso()
     if "occurred_at" in colset:
         payload["occurred_at"] = ts
-    elif "created_at" in colset:
+    if "created_at" in colset:
         payload["created_at"] = ts
-    elif "timestamp" in colset:
+    if "timestamp" in colset and "timestamp" not in payload:
         payload["timestamp"] = ts
-    elif "ts" in colset:
+    if "ts" in colset and "ts" not in payload:
         payload["ts"] = ts
-
     # message/note varies
     if "message" in colset:
         payload["message"] = message
@@ -157,7 +156,6 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
     # POST /sample/status
     if path != "/sample/status":
         return False
-
     if lims_db is None:
         h._err(500, "internal_error", "lims_db import failed")
         return True
@@ -188,6 +186,7 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
     conn = lims_db.connect()
     from_status: Optional[str] = None
     event_recorded = False
+    sample: Dict[str, Any] = {}
 
     try:
         ensure_db(conn)
@@ -203,12 +202,13 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
         ).fetchone()
         from_status = prev[0] if prev else None
 
-        conn.execute(
-            "UPDATE samples SET status = ? WHERE id = ?",
-            (status, sample_id),
-        )
-
+        # Atomic contract: status update + event must succeed together
         try:
+            conn.execute("BEGIN")
+            conn.execute(
+                "UPDATE samples SET status = ? WHERE id = ?",
+                (status, sample_id),
+            )
             event_recorded = _insert_sample_event(
                 conn,
                 sample_id,
@@ -217,9 +217,18 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
                 to_status=status,
                 message=note,
             )
-        except Exception:
-            event_recorded = False
+            if not event_recorded:
+                raise RuntimeError("failed to record sample_events row (missing table or incompatible schema)")
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            h._err(500, "internal_error", f"status update failed: {e}")
+            return True
 
+        # Build response sample payload
         row = conn.execute(
             "SELECT s.*, "
             "c.barcode AS container_barcode, c.kind AS container_kind, c.location AS container_location "
@@ -227,8 +236,8 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
             "WHERE s.id = ? LIMIT 1",
             (sample_id,),
         ).fetchone()
-
         sample = dict(row) if row else {"id": sample_id}
+
         cb = sample.pop("container_barcode", None)
         ck = sample.pop("container_kind", None)
         cl = sample.pop("container_location", None)
@@ -239,8 +248,6 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
                 "kind": ck,
                 "location": cl,
             }
-
-        conn.commit()
     finally:
         try:
             conn.close()
@@ -256,8 +263,9 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
             "identifier": ident,
             "from_status": from_status,
             "to_status": status,
-            "event_recorded": event_recorded,
+            "event_recorded": True,
             "sample": sample,
         },
     )
     return True
+
