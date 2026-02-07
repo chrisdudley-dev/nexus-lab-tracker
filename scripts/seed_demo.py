@@ -6,6 +6,11 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
+# Allow running as: python3 scripts/seed_demo.py (imports from repo root)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 try:
     from lims.cli import ensure_db
