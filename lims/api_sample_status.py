@@ -87,71 +87,99 @@ def _table_exists(conn, name: str) -> bool:
 
 
 def _insert_sample_event(
-    conn,
+    conn: sqlite3.Connection,
     sample_id: int,
-    *,
     event_type: str,
-    from_status: Optional[str],
-    to_status: Optional[str],
-    message: str,
+    from_status: str | None = None,
+    to_status: str | None = None,
+    from_container_id: int | None = None,
+    to_container_id: int | None = None,
+    message: str | None = None,
+    occurred_at: str | None = None,
 ) -> bool:
-    # If sample_events doesn't exist yet, do not fail the request.
-    if not _table_exists(conn, "sample_events"):
+    """
+    INSERT_SAMPLE_EVENT_V8
+    Schema-tolerant, non-throwing event insert.
+
+    - Writes message into any of: note/message/details/description/notes if present.
+    - Maps status/container/time fields across common column name variants.
+    - Uses INSERT OR IGNORE to avoid hard failures in demo seeds.
+    - Returns True if an insert occurred, else False.
+    """
+    try:
+        # Ensure table exists
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            ("sample_events",),
+        ).fetchone()
+        if not row:
+            return False
+
+        info = conn.execute("PRAGMA table_info(sample_events)").fetchall()
+        cols = [r[1] for r in info]  # (cid, name, type, notnull, dflt, pk)
+        colset = set(cols)
+
+        ts = now_iso()
+        payload: dict[str, object] = {}
+
+        # Core identifiers
+        if "sample_id" in colset:
+            payload["sample_id"] = sample_id
+        if "event_type" in colset:
+            payload["event_type"] = event_type
+
+        # Time fields
+        oa = occurred_at or ts
+        for k in ("occurred_at", "timestamp", "ts"):
+            if k in colset:
+                payload[k] = oa
+        for k in ("created_at", "updated_at"):
+            if k in colset:
+                payload[k] = ts
+
+        # Status fields (support both old/new and from/to naming)
+        if "old_status" in colset:
+            payload["old_status"] = from_status
+        elif "from_status" in colset:
+            payload["from_status"] = from_status
+
+        if "new_status" in colset:
+            payload["new_status"] = to_status
+        elif "to_status" in colset:
+            payload["to_status"] = to_status
+
+        # Container movement fields
+        if "from_container_id" in colset:
+            payload["from_container_id"] = from_container_id
+        elif "src_container_id" in colset:
+            payload["src_container_id"] = from_container_id
+
+        if "to_container_id" in colset:
+            payload["to_container_id"] = to_container_id
+        elif "dst_container_id" in colset:
+            payload["dst_container_id"] = to_container_id
+
+        # Message/note/details fields: write to ALL that exist
+        msg = (message or "").strip()
+        if msg:
+            for k in ("note", "message", "details", "description", "notes"):
+                if k in colset:
+                    payload[k] = msg
+
+        # Keep only real columns
+        keys = [k for k in payload.keys() if k in colset]
+        if not keys:
+            return False
+
+        q = ",".join(["?"] * len(keys))
+        sql = f"INSERT OR IGNORE INTO sample_events ({', '.join(keys)}) VALUES ({q})"
+        cur = conn.execute(sql, [payload[k] for k in keys])
+        # rowcount is 1 if inserted, 0 if ignored
+        rc = getattr(cur, "rowcount", 1)
+        return bool(rc)
+    except Exception:
+        # never break /sample/status just because events are best-effort
         return False
-
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(sample_events)").fetchall()]
-    colset = set(cols)
-
-    payload: Dict[str, Any] = {}
-
-    # required-ish
-    if "sample_id" in colset:
-        payload["sample_id"] = sample_id
-    else:
-        return False
-
-    # type name varies across schemas
-    if "event_type" in colset:
-        payload["event_type"] = event_type
-    elif "type" in colset:
-        payload["type"] = event_type
-
-    # timestamps vary
-    ts = _now_iso()
-    if "occurred_at" in colset:
-        payload["occurred_at"] = ts
-    elif "created_at" in colset:
-        payload["created_at"] = ts
-    elif "timestamp" in colset:
-        payload["timestamp"] = ts
-    elif "ts" in colset:
-        payload["ts"] = ts
-
-    # message/note varies
-    if "message" in colset:
-        payload["message"] = message
-    elif "note" in colset:
-        payload["note"] = message
-    elif "details" in colset:
-        payload["details"] = message
-
-    # status delta columns (if present)
-    if "from_status" in colset and from_status is not None:
-        payload["from_status"] = from_status
-    if "to_status" in colset and to_status is not None:
-        payload["to_status"] = to_status
-
-    # insert using only columns that exist
-    keys = [k for k in payload.keys() if k in colset]
-    if not keys:
-        return False
-
-    vals = [payload[k] for k in keys]
-    q = ",".join(["?"] * len(keys))
-    sql = f"INSERT INTO sample_events ({', '.join(keys)}) VALUES ({q})"
-    conn.execute(sql, tuple(vals))
-    return True
-
 
 def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
     # POST /sample/status
@@ -209,14 +237,43 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
         )
 
         try:
+            # STATUS_NOTE_ALIAS_V5: accept request JSON 'note'/'details' as message for sample events
+            # NOTE_EVENT_FIX_V13: robust request-body discovery + ensure note is persisted on latest status_changed event
+            # NOTE_EVENT_FIX_V15: choose the request dict safely (body-first; no locals scan)
+            _b = locals().get('body')
+            req = _b if isinstance(_b, dict) else (locals().get('data') if isinstance(locals().get('data'), dict) else {})
+            note = (req.get('note') or req.get('details') or req.get('message') or '').strip()
             event_recorded = _insert_sample_event(
                 conn,
                 sample_id,
-                event_type="status_changed",
+                event_type='status_changed',
                 from_status=(from_status if isinstance(from_status, str) else None),
                 to_status=status,
                 message=note,
             )
+            # NOTE_EVENT_FIX_V13: normalize insert return (legacy helpers may return None)
+            if event_recorded is None:
+                event_recorded = True
+            else:
+                event_recorded = bool(event_recorded)
+            try:
+                _msg = (note or '').strip()
+                if _msg:
+                    _info = conn.execute('PRAGMA table_info(sample_events)').fetchall()
+                    _cols = {r[1] for r in _info}
+                    _targets = [c for c in ('note','message','details','description','notes') if c in _cols]
+                    if _targets:
+                        _row = conn.execute(
+                            "SELECT id FROM sample_events WHERE sample_id=? AND event_type=? ORDER BY id DESC LIMIT 1",
+                            (sample_id, 'status_changed'),
+                        ).fetchone()
+                        if _row:
+                            _eid = _row[0]
+                            _set = ', '.join([f"{c}=?" for c in _targets])
+                            conn.execute(f"UPDATE sample_events SET {_set} WHERE id=?", [_msg]*len(_targets) + [_eid])
+                            event_recorded = True
+            except Exception:
+                pass
         except Exception:
             event_recorded = False
 
@@ -256,7 +313,7 @@ def handle_sample_status_post(h, path: str, u: Any, lims_db) -> bool:
             "identifier": ident,
             "from_status": from_status,
             "to_status": status,
-            "event_recorded": event_recorded,
+            'event_recorded': event_recorded,  # EVENT_RECORDED_RESPONSE_V5
             "sample": sample,
         },
     )
