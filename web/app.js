@@ -103,3 +103,110 @@ btnVerify?.addEventListener("click", async () => {
   try { setOutput("POST /snapshot/verify", await apiPost("/snapshot/verify", { artifact: lastArtifact })); }
   catch (e) { out.textContent = "ERROR: " + e; }
 });
+
+
+// ----------------------------
+// Kanban Board (MVP)
+// ----------------------------
+const STATUSES = ["received", "processing", "analyzing", "completed"];
+
+function pickSamples(payload) {
+  if (!payload) return [];
+  // tolerate schema changes: samples/rows/items
+  return payload.samples || payload.rows || payload.items || [];
+}
+
+function el(tag, attrs = {}, children = []) {
+  const n = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else n.setAttribute(k, String(v));
+  }
+  for (const c of children) n.appendChild(c);
+  return n;
+}
+
+async function renderBoard() {
+  const board = document.getElementById("board");
+  const btn = document.getElementById("btnBoardRefresh");
+  if (!board || !btn) return;
+
+  const limitRaw = (document.getElementById("boardLimit")?.value || "").trim();
+  const limit = limitRaw ? Math.max(0, Math.floor(Number(limitRaw))) : 200;
+
+  btn.disabled = true;
+  try {
+    const resp = await apiGet(`/sample/list?limit=${encodeURIComponent(limit)}`);
+    const data = resp.data || {};
+    const samples = pickSamples(data);
+
+    // group by status
+    const by = {};
+    for (const st of STATUSES) by[st] = [];
+    for (const sm of samples) {
+      const st = (sm && sm.status) ? String(sm.status) : "received";
+      (by[st] || (by[st] = [])).push(sm);
+    }
+
+    board.innerHTML = "";
+    board.appendChild(el("div", { class: "boardGrid" }, STATUSES.map(st => {
+      const col = el("div", { class: "boardCol" }, [
+        el("div", { class: "boardColTitle", text: st }),
+      ]);
+
+      const list = el("div", { class: "boardColList" }, []);
+      for (const sm of (by[st] || [])) {
+        const ident = sm.external_id || sm.identifier || sm.id;
+        const title = sm.external_id || sm.id || "(sample)";
+        const container = (sm.container && (sm.container.barcode || sm.container.id)) ? (sm.container.barcode || sm.container.id) : (sm.container_id ?? "");
+        const subtitle = container ? `container: ${container}` : "";
+
+        const sel = el("select", { class: "moveSelect" }, STATUSES.map(opt =>
+          el("option", { value: opt, text: opt, ...(opt === st ? {"selected":"selected"} : {}) }, [])
+        ));
+
+        const card = el("div", { class: "boardCard" }, [
+          el("div", { class: "boardCardTitle", text: String(title) }),
+          el("div", { class: "boardCardSub", text: String(subtitle) }),
+          el("div", { class: "boardCardActions" }, [
+            el("span", { class: "muted", text: "Move to:" }),
+            sel
+          ])
+        ]);
+
+        sel.addEventListener("change", async () => {
+          const to = sel.value;
+          try {
+            const r = await apiPost("/sample/status", {
+              identifier: String(ident),
+              status: String(to),
+              message: "kanban move"
+            });
+            if (!(r.data && r.data.ok)) {
+              setOutput("POST /sample/status (kanban)", r);
+            }
+          } catch (e) {
+            out.textContent = "ERROR: " + e;
+          } finally {
+            await renderBoard();
+          }
+        });
+
+        list.appendChild(card);
+      }
+
+      col.appendChild(list);
+      return col;
+    })));
+  } catch (e) {
+    out.textContent = "ERROR: " + e;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Wire button
+document.getElementById("btnBoardRefresh")?.addEventListener("click", renderBoard);
+// Auto-load once
+setTimeout(() => { try { renderBoard(); } catch {} }, 250);
