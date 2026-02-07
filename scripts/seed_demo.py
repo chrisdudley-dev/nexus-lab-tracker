@@ -32,9 +32,58 @@ def table_exists(conn: sqlite3.Connection, name: str) -> bool:
 def table_cols(conn: sqlite3.Connection, table: str) -> set[str]:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
+def normalize_payload(conn: sqlite3.Connection, table: str, payload: dict, row_key: str = "") -> dict:
+    info = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    cols = {r[1]: r for r in info}
+    out = {k: v for k, v in payload.items() if k in cols}
+    ts = now_iso()
+    kind = str(payload.get("kind") or "").strip().lower()
+    for _cid, name, ctype, notnull, dflt, _pk in info:
+        if not notnull or dflt is not None or name in out:
+            continue
+        lname = str(name).lower()
+        ctu = (ctype or "").upper()
+
+        # timestamps
+        if lname in ("created_at", "updated_at", "occurred_at", "timestamp", "ts"):
+            out[name] = ts
+            continue
+
+        # samples: status default
+        if table == "samples" and lname == "status":
+            out[name] = "received"
+            continue
+
+        # deterministic ids
+        if ("uuid" in lname) or ("guid" in lname):
+            out[name] = f"demo-{table}-{row_key or 'x'}"
+            continue
+
+        # booleans / flags
+        if lname.startswith("is_") or lname in ("active", "enabled", "exclusive"):
+            if lname == "exclusive":
+                out[name] = 1 if kind in ("tube", "vial") else 0
+            else:
+                out[name] = 1
+            continue
+
+        # capacity-ish
+        if lname in ("capacity", "max_capacity", "slots"):
+            out[name] = 96 if kind == "plate" else 1
+            continue
+
+        # type fallback
+        if "INT" in ctu:
+            out[name] = 0
+        elif ("REAL" in ctu) or ("FLOA" in ctu) or ("DOUB" in ctu):
+            out[name] = 0.0
+        else:
+            out[name] = row_key or "demo"
+    return out
+
 def insert_or_ignore(conn: sqlite3.Connection, table: str, payload: dict) -> None:
-    cols = table_cols(conn, table)
-    data = {k: v for k, v in payload.items() if k in cols}
+    row_key = str(payload.get("barcode") or payload.get("external_id") or payload.get("id") or "").strip()
+    data = normalize_payload(conn, table, payload, row_key=row_key)
     if not data:
         return
     keys = list(data.keys())
@@ -145,7 +194,10 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=12, help="Number of samples to seed (default: 12)")
     args = ap.parse_args()
 
-    db_path = os.environ.get("DB_PATH") or "data/lims.db"
+    db_path = os.environ.get("DB_PATH")
+    if not db_path:
+        # Prefer the repo’s usual sqlite filename if present
+        db_path = "data/lims.sqlite3" if Path("data/lims.sqlite3").exists() else "data/lims.db"
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
     conn = sqlite3.connect(db_path)
