@@ -181,7 +181,7 @@ async function renderBoard() {
             const r = await apiPost("/sample/status", {
               identifier: String(ident),
               status: String(to),
-              message: "kanban move"
+              note: "kanban move"
             });
             if (!(r.data && r.data.ok)) {
               setOutput("POST /sample/status (kanban)", r);
