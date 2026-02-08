@@ -271,16 +271,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
     def _send_bytes(self, code: int, body: bytes, content_type: str):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
-
-
+        if self.command != "HEAD":
+            self.wfile.write(body)
     def _err(self, http_code, error, detail=None, **extra):
         doc = {
             "schema": "nexus_api_error",
@@ -308,6 +308,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         try:
             path = urlparse(self.path).path
+            if path == "/metrics":
+                # HEAD support for Prometheus scrape probes / header checks
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+
             if path == "/exports/latest":
                 latest = _find_latest_api_tarball()
                 if not latest:
