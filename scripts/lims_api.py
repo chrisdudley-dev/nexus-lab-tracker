@@ -471,6 +471,64 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 return
 
+            if path == "/metrics":
+                # Prometheus-style plaintext metrics (best-effort; never raises)
+                rev = _git_rev_short()
+                lines = []
+                lines.append('# HELP nexus_api_up API process up (always 1 if endpoint responds)')
+                lines.append('# TYPE nexus_api_up gauge')
+                lines.append('nexus_api_up 1')
+                lines.append('# HELP nexus_build_info Build info')
+                lines.append('# TYPE nexus_build_info gauge')
+                lines.append('nexus_build_info{git_rev="%s"} 1' % (rev,))
+                db_up = 0
+                samples_total = 0
+                containers_total = 0
+                events_total = 0
+                if lims_db is not None:
+                    try:
+                        conn = lims_db.connect()
+                        try:
+                            if hasattr(lims_db, 'apply_migrations'):
+                                lims_db.apply_migrations(conn)
+                            elif hasattr(lims_db, 'init_db'):
+                                lims_db.init_db(conn)
+                            try:
+                                samples_total = int((conn.execute('SELECT COUNT(1) FROM samples').fetchone() or [0])[0] or 0)
+                            except Exception:
+                                samples_total = 0
+                            try:
+                                containers_total = int((conn.execute('SELECT COUNT(1) FROM containers').fetchone() or [0])[0] or 0)
+                            except Exception:
+                                containers_total = 0
+                            try:
+                                events_total = int((conn.execute('SELECT COUNT(1) FROM sample_events').fetchone() or [0])[0] or 0)
+                            except Exception:
+                                events_total = 0
+                            db_up = 1
+                        finally:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        db_up = 0
+                lines.append('# HELP nexus_db_up 1 if DB connect+query ok')
+                lines.append('# TYPE nexus_db_up gauge')
+                lines.append('nexus_db_up %d' % (db_up,))
+                lines.append('# HELP nexus_samples_total Total samples')
+                lines.append('# TYPE nexus_samples_total gauge')
+                lines.append('nexus_samples_total %d' % (samples_total,))
+                lines.append('# HELP nexus_containers_total Total containers')
+                lines.append('# TYPE nexus_containers_total gauge')
+                lines.append('nexus_containers_total %d' % (containers_total,))
+                lines.append('# HELP nexus_sample_events_total Total sample events')
+                lines.append('# TYPE nexus_sample_events_total gauge')
+                lines.append('nexus_sample_events_total %d' % (events_total,))
+                body = ('\n'.join(lines) + '\n').encode('utf-8')
+                self._send_bytes(200, body, 'text/plain; version=0.0.4; charset=utf-8')
+                return
+
             if path == "/container/list":
                 if lims_db is None:
                     self._err(500, "internal_error", "lims_db import failed")
