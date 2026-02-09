@@ -77,6 +77,7 @@ python3 scripts/regress_api_sample_add.py
 python3 scripts/regress_api_sample_read_endpoints.py
 python3 scripts/regress_api_sample_status_post.py
 python3 scripts/regress_api_auth_guest.py
+python3 scripts/regress_api_auth_samples_optin.py
 python3 scripts/regress_api_snapshot_export_verify.py
 python3 scripts/regress_api_metrics.py
 ./scripts/regress_api_container_workflow.py

@@ -63,6 +63,56 @@ def _extract_session_id(headers):
     return sid
 
 
+def _require_session(handler, lims_db):
+    """Return True if session is valid; otherwise sends 401 and returns False."""
+    if lims_db is None:
+        handler._err(500, "internal_error", "lims_db import failed")
+        return False
+
+    sid = _extract_session_id(handler.headers)
+    if not sid:
+        handler._err(401, "auth_required", "missing session header (X-Nexus-Session) or Authorization: Bearer")
+        return False
+
+    conn = lims_db.connect()
+    try:
+        if hasattr(lims_db, "apply_migrations"):
+            lims_db.apply_migrations(conn)
+        elif hasattr(lims_db, "init_db"):
+            lims_db.init_db(conn)
+
+        now = _utc_now_iso()
+
+        # best-effort cleanup
+        try:
+            conn.execute("DELETE FROM guest_sessions WHERE expires_at <= ?", (now,))
+            conn.commit()
+        except Exception:
+            pass
+
+        row = conn.execute(
+            "SELECT id FROM guest_sessions WHERE id = ? AND expires_at > ?",
+            (sid, now),
+        ).fetchone()
+
+        if row:
+            try:
+                conn.execute("UPDATE guest_sessions SET last_seen_at = ? WHERE id = ?", (now, sid))
+                conn.commit()
+            except Exception:
+                pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if not row:
+        handler._err(401, "invalid_session", "session not found or expired")
+        return False
+    return True
+
+
 def _validate_sample_id(s: str) -> str:
     v = (s or "").strip()
     if not _SAMPLE_ID_RE.match(v):
@@ -440,6 +490,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             u = urlparse(self.path)
             path = u.path
+
+            if os.environ.get("NEXUS_REQUIRE_AUTH_FOR_SAMPLES","").strip().lower() in ("1","true","yes"):
+                if path.startswith("/sample/"):
+                    if not _require_session(self, lims_db):
+                        return
 
             if handle_sample_read_get(self, path, u, lims_db):
                 return
