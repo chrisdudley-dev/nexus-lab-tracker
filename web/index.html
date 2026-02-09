@@ -10,6 +10,20 @@
   <h1>Nexus Lab Tracker — Demo UI</h1>
   <small>Served by <code>scripts/lims_api.py</code>. Local demo surface to prove API → website end-to-end.</small>
 
+  <div class="card" id="authCard">
+    <h2>Guest Sign-In</h2>
+    <div class="row">
+      <div>
+        <label for="guestName">display_name (optional)</label>
+        <input id="guestName" placeholder="Guest" />
+      </div>
+      <button id="btnGuestSignIn" type="button">Continue as Guest</button>
+      <button id="btnAuthMe" type="button">GET /auth/me</button>
+      <button id="btnAuthClear" type="button">Clear session</button>
+    </div>
+    <small class="muted" id="authStatus">No session.</small>
+  </div>
+
   <div class="card">
     <h2>API Health</h2>
     <button id="btnHealth">GET /health</button>
@@ -109,6 +123,8 @@
 
   async function fetchJson(path, opts){
     const headers = Object.assign({"Accept":"application/json"}, (opts && opts.headers) || {});
+    const sid = (localStorage.getItem("nexus_session_id") || "").trim();
+    if (sid) headers["X-Nexus-Session"] = sid;
     const res = await fetch(path, Object.assign({}, opts || {}, { headers }));
     const text = await res.text();
     let j;

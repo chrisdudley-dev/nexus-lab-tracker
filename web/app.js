@@ -7,26 +7,43 @@ const btnVerify = document.getElementById("btnSnapshotVerify");
 const downloadLatest = document.getElementById("downloadLatest");
 let lastArtifact = null;
 
+const SESSION_KEY = "nexus_session_id";
+
+function getSessionId() {
+  try { return String(localStorage.getItem(SESSION_KEY) || "").trim(); } catch { return ""; }
+}
+function setSessionId(sid) {
+  try { localStorage.setItem(SESSION_KEY, String(sid || "").trim()); } catch {}
+}
+function clearSessionId() {
+  try { localStorage.removeItem(SESSION_KEY); } catch {}
+}
+function withAuthHeaders(base) {
+  const h = Object.assign({}, base || {});
+  const sid = getSessionId();
+  if (sid) h["X-Nexus-Session"] = sid;
+  return h;
+}
+
+
 const pretty = (x) => { try { return JSON.stringify(x, null, 2); } catch { return String(x); } };
 
 async function apiGet(path) {
-  const r = await fetch(path);
+  const r = await fetch(path, { headers: withAuthHeaders({ "Accept": "application/json" }) });
   const ct = (r.headers.get("content-type") || "").toLowerCase();
   const data = ct.includes("application/json") ? await r.json() : await r.text();
   return { status: r.status, data };
 }
-
 async function apiPost(path, body) {
   const r = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: withAuthHeaders({ "Content-Type": "application/json", "Accept": "application/json" }),
     body: JSON.stringify(body || {})
   });
   const ct = (r.headers.get("content-type") || "").toLowerCase();
   const data = ct.includes("application/json") ? await r.json() : await r.text();
   return { status: r.status, data };
 }
-
 function setOutput(title, resp) {
   out.textContent = `${title}\n\nHTTP ${resp.status}\n${pretty(resp.data)}`;
 }
@@ -40,6 +57,64 @@ function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = String(text);
 }
+
+
+// ----------------------------
+// Guest Sign-In (UI)
+// ----------------------------
+function showAuthStatus(msg) {
+  setText("authStatus", msg);
+}
+
+async function refreshAuthMe() {
+  const sid = getSessionId();
+  if (!sid) { showAuthStatus("No session."); return; }
+  try {
+    const r = await apiGet("/auth/me");
+    if (r.status === 200 && r.data && r.data.session) {
+      const sess = r.data.session;
+      showAuthStatus(`Session ok: ${sess.id} (expires ${sess.expires_at || "?"})`);
+    } else {
+      clearSessionId();
+      showAuthStatus("Session invalid/expired (cleared).");
+    }
+  } catch (e) {
+    // Don't clear on transient failures
+    showAuthStatus("Session check failed (network).");
+  }
+}
+
+document.getElementById("btnGuestSignIn")?.addEventListener("click", async () => {
+  const display_name = (document.getElementById("guestName")?.value || "").trim();
+  try {
+    const r = await apiPost("/auth/guest", display_name ? { display_name } : {});
+    setOutput("POST /auth/guest", r);
+    if (r.status === 200 && r.data && r.data.session && r.data.session.id) {
+      setSessionId(r.data.session.id);
+      await refreshAuthMe();
+    }
+  } catch (e) {
+    out.textContent = "ERROR: " + e;
+  }
+});
+
+document.getElementById("btnAuthMe")?.addEventListener("click", async () => {
+  try {
+    const r = await apiGet("/auth/me");
+    setOutput("GET /auth/me", r);
+    await refreshAuthMe();
+  } catch (e) {
+    out.textContent = "ERROR: " + e;
+  }
+});
+
+document.getElementById("btnAuthClear")?.addEventListener("click", () => {
+  clearSessionId();
+  showAuthStatus("No session.");
+});
+
+// If a session already exists, validate it on load.
+refreshAuthMe();
 
 // Health
 document.getElementById("btnHealth")?.addEventListener("click", async () => {
