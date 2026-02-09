@@ -4,7 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Nexus Lab Tracker — Demo UI</title>
-    <link rel="stylesheet" href="/style.css" />
+
+  <!-- IMPORTANT:
+       - When served by scripts/lims_api.py at /, these resolve to /style.css and /app.js
+       - When opened via VS Code Live Server at /web/index.html, these resolve to /web/style.css and /web/app.js
+  -->
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <h1>Nexus Lab Tracker — Demo UI</h1>
@@ -12,51 +17,92 @@
 
   <div class="card">
     <h2>API Health</h2>
-    <button id="btnHealth">GET /health</button>
+    <button id="btnHealth" type="button">GET /health</button>
   </div>
+
   <div class="card">
     <h2>Containers (first workflow)</h2>
     <div class="row">
       <div>
         <label for="cBarcode">barcode</label>
-        <input id="cBarcode" placeholder="TUBE-1" />
+        <input id="cBarcode" placeholder="TUBE-1" autocomplete="off" />
       </div>
       <div>
         <label for="cKind">kind</label>
-        <input id="cKind" placeholder="tube" />
+        <input id="cKind" placeholder="tube" autocomplete="off" />
       </div>
       <div>
         <label for="cLocation">location (optional)</label>
-        <input id="cLocation" placeholder="bench-A" />
+        <input id="cLocation" placeholder="bench-A" autocomplete="off" />
       </div>
-      <button id="btnContainerAdd">POST /container/add</button>
+      <button id="btnContainerAdd" type="button">POST /container/add</button>
     </div>
 
     <div class="row" style="margin-top:10px">
       <div>
         <label for="cLimit">limit</label>
-        <input id="cLimit" value="25" />
+        <input id="cLimit" type="number" min="0" max="500" value="25" />
       </div>
-      <button id="btnContainerList">GET /container/list</button>
+      <button id="btnContainerList" type="button">GET /container/list</button>
     </div>
 
     <small class="muted">First workflow: add a container, then list containers.</small>
   </div>
-
 
   <div class="card">
     <h2>Sample Report</h2>
     <div class="row">
       <div>
         <label for="sampleId">identifier</label>
-        <input id="sampleId" value="S-001" />
+        <input id="sampleId" value="S-001" autocomplete="off" />
       </div>
       <div>
         <label for="sampleLimit">limit (optional)</label>
-        <input id="sampleLimit" value="50" />
+        <input id="sampleLimit" type="number" min="0" max="500" value="50" />
       </div>
-      <button id="btnSampleReport">POST /sample/report</button>
+      <button id="btnSampleReport" type="button">POST /sample/report</button>
     </div>
+  <div class="card">
+    <h2>Sample Add (creates a Kanban card)</h2>
+
+    <div class="row">
+      <div>
+        <label for="sSpecimenType">specimen_type</label>
+        <input id="sSpecimenType" placeholder="e.g., blood, saliva, tissue" autocomplete="off" />
+      </div>
+
+      <div>
+        <label for="sExternalId">external_id (optional)</label>
+        <input id="sExternalId" placeholder="leave blank to auto-generate" autocomplete="off" />
+      </div>
+
+      <div>
+        <label for="sStatus">status</label>
+        <select id="sStatus">
+          <option value="received" selected>received</option>
+          <option value="processing">processing</option>
+          <option value="analyzing">analyzing</option>
+          <option value="completed">completed</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="sContainer">container (optional: barcode or id)</label>
+        <input id="sContainer" placeholder="e.g., C-001" autocomplete="off" />
+        <small class="muted">Tip: after you add a container, this will auto-fill.</small>
+      </div>
+
+      <div style="flex:1; min-width: 240px;">
+        <label for="sNotes">notes (optional)</label>
+        <input id="sNotes" placeholder="short note for the sample" autocomplete="off" />
+      </div>
+
+      <button id="btnSampleAdd" type="button">POST /sample/add</button>
+    </div>
+  </div>
+
   </div>
 
   <div class="card">
@@ -64,23 +110,22 @@
     <div class="row">
       <div>
         <label for="includeSamples">include_samples (comma-separated, optional)</label>
-        <input id="includeSamples" value="S-001,S-002" />
+        <input id="includeSamples" value="S-001,S-002" autocomplete="off" />
       </div>
-      <button id="btnSnapshotExport">POST /snapshot/export</button>
-      <button id="btnSnapshotVerify" disabled>POST /snapshot/verify</button>
+      <button id="btnSnapshotExport" type="button">POST /snapshot/export</button>
+      <button id="btnSnapshotVerify" type="button" disabled>POST /snapshot/verify</button>
     </div>
     <small id="hint">Verify enables after export returns an artifact path.</small>
-    <div style="margin-top:8px"><a id="downloadLatest" href="/exports/latest" style="display:none">Download latest snapshot</a></div>
+    <div style="margin-top:8px">
+      <a id="downloadLatest" href="/exports/latest" style="display:none">Download latest snapshot</a>
+    </div>
   </div>
 
   <div class="card">
     <h2>Output</h2>
-    <pre id="out">(run a request)</pre>
+    <pre id="out" role="status" aria-live="polite">(run a request)</pre>
   </div>
-  
 
-
-  
   <div class="card" id="kanbanCard">
     <h2>Kanban Board (MVP)</h2>
     <div class="row">
@@ -90,148 +135,11 @@
       </label>
     </div>
 
-<script src="/app.js"></script>
-
-<script>
-/* Samples UI: /sample/list, /sample/show, /sample/events */
-(function nexusSampleUI(){
-  function init(){
-  const out = document.getElementById("samplesOut");
-  if (!out) return;
-
-  const $ = (id) => document.getElementById(id);
-
-  function pretty(x){
-    try { return JSON.stringify(x, null, 2); }
-    catch { return String(x); }
-  }
-  function write(x){ out.textContent = pretty(x); }
-
-  async function fetchJson(path, opts){
-    const headers = Object.assign({"Accept":"application/json"}, (opts && opts.headers) || {});
-    const res = await fetch(path, Object.assign({}, opts || {}, { headers }));
-    const text = await res.text();
-    let j;
-    try { j = JSON.parse(text); } catch { j = { raw: text }; }
-    if (!res.ok) throw j;
-    return j;
-  }
-
-  function qs(obj){
-    const parts = [];
-    for (const [k,v] of Object.entries(obj)){
-      if (v === null || v === undefined) continue;
-      const sv = String(v).trim();
-      if (!sv) continue;
-      parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(sv));
-    }
-    return parts.length ? ("?" + parts.join("&")) : "";
-  }
-
-  async function doList(){
-    const q = qs({
-      limit: $("sampleLimit").value,
-      status: $("sampleStatus").value,
-      container: $("sampleContainer").value,
-    });
-    try {
-      const j = await fetchJson("/sample/list" + q);
-      write(j);
-    } catch (e) {
-      write(e);
-    }
-  }
-
-  async function doShow(){
-    const ident = ($("sampleIdent").value || "").trim();
-    if (!ident) return write({ok:false, error:"identifier required"});
-    try {
-      const j = await fetchJson("/sample/show" + qs({identifier: ident}));
-      // AUTOFILL_STATUS_FROM_SHOW: if API returns sample.status, reflect it in the status dropdown
-      try {
-        const st = (j && j.sample && j.sample.status) ? String(j.sample.status).trim() : "";
-        if (st && $("statusValue")) {
-          const sel = $("statusValue");
-          const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
-          if (has) sel.value = st;
-        }
-      } catch (e) {
-        // ignore UI autofill failures
-      }
-
-      write(j);
-    } catch (e) {
-      write(e);
-    }
-  }
-
-  async function doEvents(){
-    const ident = ($("eventsIdent").value || "").trim();
-    if (!ident) return write({ok:false, error:"identifier required"});
-    try {
-      const j = await fetchJson("/sample/events" + qs({identifier: ident, limit: $("eventsLimit").value}));
-      write(j);
-    } catch (e) {
-      write(e);
-    }
-  }
-  async function doStatus(){
-    const ident = (($("sampleIdent").value || $("eventsIdent").value) || "").trim();
-    if (!ident) return write({ok:false, error:"identifier required"});
-
-    const status = ($("statusValue").value || "").trim();
-    if (!status) return write({ok:false, error:"status required"});
-
-    const msg = ($("statusMessage").value || "").trim();
-    const body = { identifier: ident, status: status };
-    if (msg) body.message = msg;
-
-    try {
-      const j = await fetchJson("/sample/status", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(body),
-      });
-      write(j);
-      // STATUS_POST_AUTOREFRESH_V1: if status update succeeded, refresh Show output
-      try {
-        // if API returns canonical status, reflect it immediately (doShow() also autofills)
-        const st = (j && (j.to_status || j.status)) ? String((j.to_status || j.status)).trim() : "";
-        if (st && $("statusValue")) {
-          const sel = $("statusValue");
-          const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
-          if (has) sel.value = st;
-        }
-      } catch (e) { /* ignore */ }
-      if (j && j.ok) {
-        try { await doShow(); } catch (e) { /* ignore */ }
-      }
-
-    } catch (e) {
-      write(e);
-    }
-  }
-
-
-  $("btnSampleList").addEventListener("click", doList);
-  $("btnSampleShow").addEventListener("click", doShow);
-  $("btnSampleEvents").addEventListener("click", doEvents);
-  $("btnSampleStatus").addEventListener("click", doStatus);
-
-  // helpful default: mirror identifier fields
-  $("sampleIdent").addEventListener("input", () => { $("eventsIdent").value = $("sampleIdent").value; });
-
-  write({ok:true, hint:"Use List / Show / Events. Output appears here."});
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
-})();
-</script>
     <div id="board" class="board" style="margin-top:10px"></div>
     <small class="muted">Move cards with the dropdown. Drag/drop is post-MVP.</small>
   </div>
 
-  <!-- Samples (read endpoints) -->
+  <!-- Optional Samples panel kept as-is (still uses its inline script below). -->
   <section id="samplesPanel" style="margin-top:14px">
     <h2>Samples</h2>
 
@@ -247,31 +155,30 @@
         </select>
       </label>
       <label>Container
-        <input id="sampleContainer" placeholder="id or barcode" size="18" />
+        <input id="sampleContainer" placeholder="id or barcode" size="18" autocomplete="off" />
       </label>
       <label>Limit
-        <input id="sampleLimit" type="number" min="0" max="500" value="50" style="width:6em" />
+        <input id="samplesLimit" type="number" min="0" max="500" value="50" style="width:6em" />
       </label>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
       <button id="btnSampleShow" type="button">Show</button>
       <label>Identifier
-        <input id="sampleIdent" placeholder="external_id or id" size="24" />
+        <input id="sampleIdent" placeholder="external_id or id" size="24" autocomplete="off" />
       </label>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
       <button id="btnSampleEvents" type="button">Events</button>
       <label>Identifier
-        <input id="eventsIdent" placeholder="external_id or id" size="24" />
+        <input id="eventsIdent" placeholder="external_id or id" size="24" autocomplete="off" />
       </label>
       <label>Limit
         <input id="eventsLimit" type="number" min="0" max="500" value="100" style="width:6em" />
       </label>
     </div>
 
-    
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px">
       <button id="btnSampleStatus" type="button">Set Status</button>
       <label>Status
@@ -288,12 +195,140 @@
         </select>
       </label>
       <label>Message
-        <input id="statusMessage" placeholder="optional note" size="30" />
+        <input id="statusMessage" placeholder="optional note" size="30" autocomplete="off" />
       </label>
     </div>
 
-    <pre id="samplesOut" style="margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; max-height:360px; overflow:auto; white-space:pre-wrap"></pre>
+    <pre id="samplesOut" role="status" aria-live="polite"
+         style="margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; max-height:360px; overflow:auto; white-space:pre-wrap"></pre>
   </section>
 
+  <!-- Core UI wiring (containers, report, snapshot, kanban) -->
+  <script src="app.js"></script>
+
+  <!-- Samples UI: /sample/list, /sample/show, /sample/events -->
+  <script>
+  (function nexusSampleUI(){
+    function init(){
+      const out = document.getElementById("samplesOut");
+      if (!out) return;
+
+      const $ = (id) => document.getElementById(id);
+
+      function pretty(x){
+        try { return JSON.stringify(x, null, 2); }
+        catch { return String(x); }
+      }
+      function write(x){ out.textContent = pretty(x); }
+
+      async function fetchJson(path, opts){
+        const headers = Object.assign({"Accept":"application/json"}, (opts && opts.headers) || {});
+        const res = await fetch(path, Object.assign({}, opts || {}, { headers }));
+        const text = await res.text();
+        let j;
+        try { j = JSON.parse(text); } catch { j = { raw: text }; }
+        if (!res.ok) throw j;
+        return j;
+      }
+
+      function qs(obj){
+        const parts = [];
+        for (const [k,v] of Object.entries(obj)){
+          if (v === null || v === undefined) continue;
+          const sv = String(v).trim();
+          if (!sv) continue;
+          parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(sv));
+        }
+        return parts.length ? ("?" + parts.join("&")) : "";
+      }
+
+      async function doList(){
+        const q = qs({
+          limit: $("samplesLimit").value,
+          status: $("sampleStatus").value,
+          container: $("sampleContainer").value,
+        });
+        try {
+          const j = await fetchJson("/sample/list" + q);
+          write(j);
+        } catch (e) {
+          write(e);
+        }
+      }
+
+      async function doShow(){
+        const ident = ($("sampleIdent").value || "").trim();
+        if (!ident) return write({ok:false, error:"identifier required"});
+        try {
+          const j = await fetchJson("/sample/show" + qs({identifier: ident}));
+
+          // autofill status dropdown from show response
+          try {
+            const st = (j && j.sample && j.sample.status) ? String(j.sample.status).trim() : "";
+            if (st && $("statusValue")) {
+              const sel = $("statusValue");
+              const has = Array.from(sel.options || []).some(o => (o && o.value) === st);
+              if (has) sel.value = st;
+            }
+          } catch {}
+
+          write(j);
+        } catch (e) {
+          write(e);
+        }
+      }
+
+      async function doEvents(){
+        const ident = ($("eventsIdent").value || "").trim();
+        if (!ident) return write({ok:false, error:"identifier required"});
+        try {
+          const j = await fetchJson("/sample/events" + qs({identifier: ident, limit: $("eventsLimit").value}));
+          write(j);
+        } catch (e) {
+          write(e);
+        }
+      }
+
+      async function doStatus(){
+        const ident = (($("sampleIdent").value || $("eventsIdent").value) || "").trim();
+        if (!ident) return write({ok:false, error:"identifier required"});
+
+        const status = ($("statusValue").value || "").trim();
+        if (!status) return write({ok:false, error:"status required"});
+
+        const msg = ($("statusMessage").value || "").trim();
+        const body = { identifier: ident, status: status };
+        if (msg) body.message = msg;
+
+        try {
+          const j = await fetchJson("/sample/status", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify(body),
+          });
+          write(j);
+          if (j && j.ok) {
+            try { await doShow(); } catch {}
+          }
+        } catch (e) {
+          write(e);
+        }
+      }
+
+      $("btnSampleList").addEventListener("click", doList);
+      $("btnSampleShow").addEventListener("click", doShow);
+      $("btnSampleEvents").addEventListener("click", doEvents);
+      $("btnSampleStatus").addEventListener("click", doStatus);
+
+      // helpful default: mirror identifier fields
+      $("sampleIdent").addEventListener("input", () => { $("eventsIdent").value = $("sampleIdent").value; });
+
+      write({ok:true, hint:"Use List / Show / Events. Output appears here."});
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+  </script>
 </body>
 </html>

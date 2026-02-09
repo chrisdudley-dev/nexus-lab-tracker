@@ -1,109 +1,272 @@
-:root { color-scheme: light dark; }
+/* Nexus Lab Tracker — Demo UI
+   Drop-in replacement for web/style.css
+   Goals: cleaner spacing, better readability, accessible focus, light/dark polish
+*/
 
-body {
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  margin: 24px;
-  line-height: 1.35;
+:root {
+  color-scheme: light dark;
+
+  /* spacing */
+  --r: 14px;
+  --r-sm: 10px;
+  --gap: 12px;
+
+  /* type */
+  --font: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* light theme (default) */
+  --bg: #f7f8fb;
+  --fg: #0f172a;
+  --muted: #475569;
+
+  --card: #ffffff;
+  --border: rgba(15, 23, 42, 0.14);
+  --border-strong: rgba(15, 23, 42, 0.22);
+
+  --field: rgba(15, 23, 42, 0.03);
+  --field-border: rgba(15, 23, 42, 0.18);
+
+  --accent: #2563eb;        /* blue-600 */
+  --accent-2: #0ea5e9;      /* sky-500 */
+
+  --shadow: 0 10px 26px rgba(15, 23, 42, 0.10);
+  --shadow-sm: 0 6px 16px rgba(15, 23, 42, 0.08);
+  --focus: 0 0 0 3px rgba(37, 99, 235, 0.25);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020;
+    --fg: #e5e7eb;
+    --muted: rgba(229, 231, 235, 0.72);
+
+    --card: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.22);
+
+    --field: rgba(255, 255, 255, 0.05);
+    --field-border: rgba(255, 255, 255, 0.18);
+
+    --shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
+    --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.35);
+    --focus: 0 0 0 3px rgba(14, 165, 233, 0.25);
+  }
+}
+
+/* --- base --- */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font);
+  margin: 24px;
+  line-height: 1.45;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body > * { max-width: 1040px; }
+
+h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px 0;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 10px 0;
+}
+
+small { opacity: 0.9; color: var(--muted); }
+.muted { opacity: 0.9; color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.95em; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- cards / layout --- */
 .card {
-  border: 1px solid rgba(127,127,127,.35);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--r);
   padding: 16px;
-  margin: 12px 0;
+  margin: 14px 0;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
 }
 
 .row {
   display: flex;
-  gap: 12px;
+  gap: var(--gap);
   flex-wrap: wrap;
   align-items: end;
 }
 
+section { max-width: 1040px; }
+
+/* --- form controls --- */
 label {
-  display:block;
-  font-size:.9rem;
-  opacity:.9;
-  margin-bottom:6px;
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 6px;
 }
 
-input {
+input, select {
   width: min(520px, 100%);
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(127,127,127,.45);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--field-border);
+  background: var(--field);
+  color: var(--fg);
+  outline: none;
+}
+
+select {
+  width: auto;
+  min-width: 160px;
+}
+
+input::placeholder { opacity: 0.65; }
+
+input:focus, select:focus {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--field-border));
+  box-shadow: var(--focus);
 }
 
 button {
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(127,127,127,.45);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: color-mix(in oklab, var(--card) 88%, var(--accent) 12%);
+  color: var(--fg);
   cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
+button:hover {
+  background: color-mix(in oklab, var(--card) 80%, var(--accent) 20%);
+  border-color: color-mix(in oklab, var(--border-strong) 70%, var(--accent) 30%);
+}
+
+button:active { transform: translateY(1px); }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border-strong));
+}
+
+/* tighten numeric inputs used in index.html (inline widths still apply) */
+input[type="number"] {
+  width: auto;
+  min-width: 7em;
+}
+
+/* --- output blocks --- */
 pre {
   white-space: pre-wrap;
   word-break: break-word;
   padding: 12px;
-  border-radius: 10px;
-  background: rgba(127,127,127,.12);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 82%, var(--accent-2) 18%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-small { opacity: .8; }
-h1 { font-size: 1.35rem; margin: 0 0 8px 0; }
-h2 { font-size: 1.05rem; margin: 0 0 10px 0; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-.muted { opacity: .75; }
+#out {
+  max-height: 360px;
+  overflow: auto;
+}
 
-
-/* Kanban MVP */
+/* --- Kanban MVP --- */
 .boardGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(180px, 1fr));
   gap: 12px;
 }
+
 .boardCol {
-  border: 1px solid #ddd;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   padding: 10px;
-  background: #fff;
+  background: color-mix(in oklab, var(--card) 92%, var(--accent-2) 8%);
+  box-shadow: var(--shadow-sm);
 }
+
 .boardColTitle {
   font-weight: 700;
   margin-bottom: 8px;
   text-transform: capitalize;
+  letter-spacing: 0.01em;
 }
+
 .boardColList {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
 .boardCard {
-  border: 1px solid #e5e5e5;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   padding: 10px;
-  background: #fafafa;
+  background: color-mix(in oklab, var(--card) 94%, black 6%);
 }
-.boardCardTitle {
-  font-weight: 600;
-}
+
+.boardCardTitle { font-weight: 650; }
+
 .boardCardSub {
-  font-size: 0.9em;
-  opacity: 0.8;
+  font-size: 0.92em;
+  color: var(--muted);
   margin-top: 2px;
 }
+
 .boardCardActions {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
+
 .moveSelect {
-  padding: 4px 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
 }
+
+/* --- responsive --- */
 @media (max-width: 980px) {
   .boardGrid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  body { margin: 18px; }
 }
+
 @media (max-width: 520px) {
   .boardGrid { grid-template-columns: 1fr; }
+  body { margin: 14px; }
+  button { width: 100%; }
+  select { width: 100%; min-width: 0; }
+  input { width: 100%; }
 }
+
+/* --- small polish --- */
+#downloadLatest {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--card) 90%, var(--accent) 10%);
+}
+#downloadLatest:hover { border-style: solid; }
