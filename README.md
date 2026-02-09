@@ -118,3 +118,9 @@ The server selects the most recent `*.tar.gz` under `exports/api` (server-contro
 Local run:
 - `./scripts/lims_api.sh --port 8087`
 
+## Demo
+
+- Demo guide: `docs/DEMO.md`
+- API route map + curl templates: `docs/DEMO_API_CURL.md`
+- Proof runner (writes proof log under `report/`): `./scripts/demo_smoke.sh`
+
