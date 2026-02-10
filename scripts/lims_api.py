@@ -7,6 +7,8 @@ import tempfile
 import subprocess
 import sys
 import shutil
+import secrets
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -27,6 +29,89 @@ except Exception:
 _SAMPLE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 _CONTAINER_BARCODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 _CONTAINER_KIND_RE    = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,31}$")
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _guest_ttl_seconds() -> int:
+    # Default: 12 hours. Clamp to [60s, 7d] for safety.
+    raw = (os.environ.get("NEXUS_GUEST_TTL_SECONDS", "") or "").strip()
+    try:
+        v = int(raw) if raw else 12 * 60 * 60
+    except Exception:
+        v = 12 * 60 * 60
+    if v < 60:
+        v = 60
+    if v > 7 * 24 * 60 * 60:
+        v = 7 * 24 * 60 * 60
+    return v
+
+
+def _extract_session_id(headers):
+    sid = (headers.get("X-Nexus-Session") or headers.get("X-Session-Id") or "").strip()
+    if not sid:
+        auth = (headers.get("Authorization") or "").strip()
+        if auth.lower().startswith("bearer "):
+            parts = auth.split(None, 1)
+            sid = parts[1].strip() if len(parts) == 2 else ""
+    if not sid:
+        return None
+    if len(sid) > 256:
+        return None
+    if any(ch.isspace() for ch in sid):
+        return None
+    return sid
+
+
+def _require_session(handler, lims_db):
+    """Return True if session is valid; otherwise sends 401 and returns False."""
+    if lims_db is None:
+        handler._err(500, "internal_error", "lims_db import failed")
+        return False
+
+    sid = _extract_session_id(handler.headers)
+    if not sid:
+        handler._err(401, "auth_required", "missing session header (X-Nexus-Session) or Authorization: Bearer")
+        return False
+
+    conn = lims_db.connect()
+    try:
+        if hasattr(lims_db, "apply_migrations"):
+            lims_db.apply_migrations(conn)
+        elif hasattr(lims_db, "init_db"):
+            lims_db.init_db(conn)
+
+        now = _utc_now_iso()
+
+        # best-effort cleanup
+        try:
+            conn.execute("DELETE FROM guest_sessions WHERE expires_at <= ?", (now,))
+            conn.commit()
+        except Exception:
+            pass
+
+        row = conn.execute(
+            "SELECT id FROM guest_sessions WHERE id = ? AND expires_at > ?",
+            (sid, now),
+        ).fetchone()
+
+        if row:
+            try:
+                conn.execute("UPDATE guest_sessions SET last_seen_at = ? WHERE id = ?", (now, sid))
+                conn.commit()
+            except Exception:
+                pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    if not row:
+        handler._err(401, "invalid_session", "session not found or expired")
+        return False
+    return True
+
 
 def _validate_sample_id(s: str) -> str:
     v = (s or "").strip()
@@ -406,7 +491,60 @@ class Handler(BaseHTTPRequestHandler):
             u = urlparse(self.path)
             path = u.path
 
+            if os.environ.get("NEXUS_REQUIRE_AUTH_FOR_SAMPLES","").strip().lower() in ("1","true","yes"):
+                if path.startswith("/sample/"):
+                    if not _require_session(self, lims_db):
+                        return
+
             if handle_sample_read_get(self, path, u, lims_db):
+                return
+
+            if path == "/auth/me":
+                if lims_db is None:
+                    self._err(500, "internal_error", "lims_db import failed")
+                    return
+                sid = _extract_session_id(self.headers)
+                if not sid:
+                    self._err(401, "auth_required", "missing session header (X-Nexus-Session) or Authorization: Bearer")
+                    return
+
+                conn = lims_db.connect()
+                try:
+                    if hasattr(lims_db, "apply_migrations"):
+                        lims_db.apply_migrations(conn)
+                    elif hasattr(lims_db, "init_db"):
+                        lims_db.init_db(conn)
+
+                    now = _utc_now_iso()
+                    # best-effort cleanup
+                    try:
+                        conn.execute("DELETE FROM guest_sessions WHERE expires_at <= ?", (now,))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+                    row = conn.execute(
+                        "SELECT id, display_name, created_at, expires_at, last_seen_at "
+                        "FROM guest_sessions WHERE id = ? AND expires_at > ?",
+                        (sid, now),
+                    ).fetchone()
+                    if row:
+                        try:
+                            conn.execute("UPDATE guest_sessions SET last_seen_at = ? WHERE id = ?", (now, sid))
+                            conn.commit()
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+                if not row:
+                    self._err(401, "invalid_session", "session not found or expired")
+                    return
+
+                self._send(200, {"schema": "nexus_auth_me", "schema_version": 1, "ok": True, "session": dict(row)})
                 return
 
             # Download export artifacts (server-controlled dir only).
@@ -606,6 +744,60 @@ class Handler(BaseHTTPRequestHandler):
                 body = self._read_json()
             except ValueError as e:
                 self._err(400, "bad_request", str(e))
+                return
+
+            # POST /auth/guest
+            if path == "/auth/guest":
+                if lims_db is None:
+                    self._err(500, "internal_error", "lims_db import failed")
+                    return
+                try:
+                    display_name = _clean_text_field("display_name", body.get("display_name"), required=False, max_len=64)
+                except ValueError as e:
+                    self._err(400, "bad_request", str(e))
+                    return
+
+                conn = lims_db.connect()
+                try:
+                    if hasattr(lims_db, "apply_migrations"):
+                        lims_db.apply_migrations(conn)
+                    elif hasattr(lims_db, "init_db"):
+                        lims_db.init_db(conn)
+
+                    now_dt = datetime.now(timezone.utc).replace(microsecond=0)
+                    exp_dt = (now_dt + timedelta(seconds=_guest_ttl_seconds())).replace(microsecond=0)
+                    now = now_dt.isoformat()
+                    expires_at = exp_dt.isoformat()
+
+                    # best-effort cleanup
+                    try:
+                        conn.execute("DELETE FROM guest_sessions WHERE expires_at <= ?", (now,))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+                    sid = secrets.token_urlsafe(24)
+                    conn.execute(
+                        "INSERT INTO guest_sessions (id, display_name, created_at, expires_at, last_seen_at) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (sid, display_name, now, expires_at, now),
+                    )
+                    conn.commit()
+
+                    sess = {
+                        "id": sid,
+                        "display_name": display_name,
+                        "created_at": now,
+                        "expires_at": expires_at,
+                        "last_seen_at": now,
+                    }
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+                self._send(200, {"schema": "nexus_auth_guest", "schema_version": 1, "ok": True, "session": sess})
                 return
 
             # POST /snapshot/export
