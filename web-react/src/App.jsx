@@ -1,35 +1,52 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { useEffect, useState } from 'react'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [health, setHealth] = useState(null)
+  const [err, setErr] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  async function load() {
+    setLoading(true)
+    setErr(null)
+    try {
+      const r = await fetch('/api/health', { headers: { 'Accept': 'application/json' } })
+      const text = await r.text()
+      let data = null
+      try { data = JSON.parse(text) } catch { /* keep raw */ }
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.slice(0, 200)}`)
+      setHealth(data ?? { raw: text })
+    } catch (e) {
+      setErr(String(e?.message || e))
+      setHealth(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
 
   return (
-    <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+      <h1 style={{ marginBottom: 6 }}>Nexus Lab Tracker — Web UI (React)</h1>
+      <div style={{ opacity: 0.8, marginBottom: 18 }}>
+        Dev server calls <code>/api/health</code> (proxied by Vite) → backend <code>127.0.0.1:8787/health</code>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+        <button onClick={load} disabled={loading} style={{ padding: '8px 12px', cursor: loading ? 'not-allowed' : 'pointer' }}>
+          {loading ? 'Loading…' : 'Refresh'}
         </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
+        {err ? <span style={{ color: 'crimson' }}>Error: {err}</span> : null}
+        {health?.ok ? <span style={{ color: 'green' }}>API OK</span> : null}
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+
+      <pre style={{
+        background: '#111', color: '#eee', padding: 16, borderRadius: 10,
+        overflowX: 'auto', lineHeight: 1.35
+      }}>
+        {health ? JSON.stringify(health, null, 2) : (loading ? 'Loading…' : 'No data')}
+      </pre>
+    </div>
   )
 }
-
-export default App
