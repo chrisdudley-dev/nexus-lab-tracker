@@ -10,7 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from fastapi import Response
 from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse
 
 # Repo roots
@@ -302,6 +303,11 @@ async def version() -> JSONResponse:
         },
     )
 
+
+@app.head("/metrics", include_in_schema=False)
+async def metrics_head():
+    # Explicit HEAD support (FastAPI may not auto-add it depending on routing)
+    return Response(status_code=200, media_type="text/plain; version=0.0.4; charset=utf-8")
 
 @app.get("/metrics")
 async def metrics() -> PlainTextResponse:
