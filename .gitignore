@@ -58,3 +58,6 @@ exports/
 
 # local demo proof bundles
 report/
+
+# Vite cache
+web-react/.vite/
