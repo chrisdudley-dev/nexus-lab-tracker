@@ -23,6 +23,11 @@ export default function SamplesPanel() {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
 
+  const [selectedId, setSelectedId] = useState(null)
+  const [selectedShow, setSelectedShow] = useState(null)
+  const [selectedEvents, setSelectedEvents] = useState(null)
+
+
   const [sessionId, setSessionId] = useState(localStorage.getItem('nexus_session') || '')
   const [displayName, setDisplayName] = useState(localStorage.getItem('nexus_display_name') || 'Jerboa Guest')
 
@@ -71,6 +76,25 @@ export default function SamplesPanel() {
     localStorage.removeItem('nexus_session')
   }
 
+  async function loadDetails(identifier) {
+    const id = String(identifier || '').trim()
+    if (!id) return
+    setSelectedId(id)
+    setLoading(true); setErr(null)
+    try {
+      const show = await fetchJson(`/api/sample/show?identifier=${encodeURIComponent(id)}`, { headers: authHeaders })
+      const ev = await fetchJson(`/api/sample/events?identifier=${encodeURIComponent(id)}&limit=50`, { headers: authHeaders })
+      setSelectedShow(show)
+      setSelectedEvents(ev)
+    } catch (e) {
+      setErr(String(e?.message || e))
+      setSelectedShow(null)
+      setSelectedEvents(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => { loadSamples(25) }, [])
 
   const rows = samples?.samples || []
@@ -109,7 +133,8 @@ export default function SamplesPanel() {
         {err ? <span style={{ color: 'crimson' }}>Error: {err}</span> : null}
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, overflowX: 'auto' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
@@ -122,7 +147,7 @@ export default function SamplesPanel() {
           </thead>
           <tbody>
             {rows.map((s) => (
-              <tr key={s.id}>
+              <tr key={s.id} onClick={() => loadDetails(s.external_id)} style={{ cursor: 'pointer' }}>
                 <td style={{ padding: '8px 10px', borderBottom: '1px solid #222' }}>{s.id}</td>
                 <td style={{ padding: '8px 10px', borderBottom: '1px solid #222' }}>{s.external_id}</td>
                 <td style={{ padding: '8px 10px', borderBottom: '1px solid #222' }}>{s.status}</td>
@@ -136,7 +161,20 @@ export default function SamplesPanel() {
             ) : null}
           </tbody>
         </table>
+        </div>
+        <div style={{ width: 420, maxWidth: '42vw' }}>
+          <div style={{ opacity: 0.8, marginBottom: 8 }}>
+            Details {selectedId ? <span>(selected: <code>{selectedId}</code>)</span> : null}
+          </div>
+          <pre style={{
+            background: '#111', color: '#eee', padding: 12, borderRadius: 10,
+            overflowX: 'auto', lineHeight: 1.35, whiteSpace: 'pre-wrap'
+          }}>
+{selectedShow ? JSON.stringify({ show: selectedShow, events: selectedEvents }, null, 2) : 'Click a sample row to load /sample/show + /sample/events…'}
+          </pre>
+        </div>
       </div>
     </div>
   )
 }
+
