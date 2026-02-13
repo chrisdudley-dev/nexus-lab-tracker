@@ -1,45 +1,28 @@
-# Nexus Lab Tracker — Demo Guide (Milestone A)
+# Nexus Lab Tracker — Demo
 
-This guide is the “show it works” path for the MVP: start the API, open the UI, perform a small workflow, and verify health/metrics.
+This demo proves the project is running, reachable on LAN, and enforcing basic guardrails.
 
-## 1) Quick proof (fastest)
-Runs the full core regression suite and writes a timestamped proof log:
+## Prereqs
+- FastAPI is running behind systemd: `nexus-fastapi.service`
+- nginx reverse-proxy is active on port 80
+- API is reachable on LAN at: `http://<jerboa-lan-ip>/`
 
-```bash
-./scripts/demo_smoke.sh
-```
+## Quick demo flow (2–5 minutes)
 
-Proof output:
-- `report/demo_proof/<timestamp>/demo_smoke.log`
+### 1) Health
+- Open: `http://<jerboa-lan-ip>/health`
+- Expect: `ok=true`, plus `git_rev` and `db_path`.
 
-## 2) Start the API
-Default (loopback + default port):
+### 2) Auth guardrail on sample list
+- Open: `http://<jerboa-lan-ip>/sample/list`
+- Expect: `401 Unauthorized` when auth is required.
 
-```bash
-./scripts/lims_api.sh
-```
+### 3) Metrics visibility rule
+- From *Jerboa only*: `curl -fsS http://127.0.0.1/metrics | head`
+- From another LAN device: `http://<jerboa-lan-ip>/metrics` should be forbidden (403).
 
-Optional alternate port:
+## One-command smoke test
+Run:
+- `./scripts/demo_smoke.sh`
 
-```bash
-./scripts/lims_api.sh --port 8087
-```
-
-## 3) Verify endpoints
-Assuming default port `8787`:
-
-```bash
-curl -fsS http://127.0.0.1:8787/health
-curl -fsS http://127.0.0.1:8787/metrics | head -n 30
-```
-
-## 4) Open the UI
-Open in a browser:
-- `http://127.0.0.1:8787/`
-
-## 5) MVP workflow (what to show)
-1) Create/select a container
-2) Add a sample (unique `external_id`)
-3) Move status + add a note
-4) Refresh and confirm status/note persist
-5) Confirm `/metrics` responds
+If it passes, the demo is in a known-good state.

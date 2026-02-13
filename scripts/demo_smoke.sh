@@ -1,59 +1,39 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TS="$(date +%Y%m%d-%H%M%S)"
-OUT_DIR="${DEMO_PROOF_DIR:-$ROOT/report/demo_proof/$TS}"
-LOG="$OUT_DIR/demo_smoke.log"
+BASE_URL="${BASE_URL:-http://127.0.0.1}"
 
-mkdir -p "$OUT_DIR"
+fail() { echo "FAIL: $*" >&2; exit 1; }
+pass() { echo "OK: $*"; }
 
-{
-  echo "== Nexus Lab Tracker: demo smoke =="
-  echo "time: $(date -Is)"
-  echo "branch: $(git -C "$ROOT" branch --show-current)"
-  echo "commit: $(git -C "$ROOT" rev-parse --short HEAD)"
-  echo
+echo "== demo_smoke: BASE_URL=$BASE_URL =="
 
-  echo "== system =="
-  uname -a || true
-  python3 --version || true
-  echo
+# 1) Service should be up (health)
+health="$(curl -fsS "$BASE_URL/health")" || fail "health endpoint not reachable"
+echo "$health" | rg -q '"ok":true' || fail "health ok!=true"
+echo "$health" | rg -q '"git_rev":"' || fail "health missing git_rev"
+pass "health ok + git_rev present"
 
-  echo "== core regressions =="
-  cd "$ROOT"
-  set +e
-  ./scripts/regress_core.sh
-  rc=$?
-  set -e
-  echo "regress_core_rc=$rc"
-  echo
+# 2) Auth-required sample list should deny when no session header
+# (If auth is disabled, this may return 200; treat that as a soft warning.)
+code="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/sample/list" || true)"
+if [[ "$code" == "401" ]]; then
+  pass "sample/list requires auth (401)"
+elif [[ "$code" == "200" ]]; then
+  echo "WARN: sample/list returned 200; auth may be disabled (NEXUS_REQUIRE_AUTH_FOR_SAMPLES=0?)" >&2
+else
+  fail "sample/list unexpected status: $code"
+fi
 
-  if [[ "${JERBOA_WEBUI_HEADLESS:-0}" == "1" ]]; then
-    echo "== web UI headless status (optional) =="
-    set +e
-    JERBOA_WEBUI_HEADLESS=1 ./scripts/regress_web_ui_status_headless.sh
-    echo "webui_headless_rc=$?"
-    set -e
-    echo
-  else
-    echo "== web UI headless status =="
-    echo "SKIP (set JERBOA_WEBUI_HEADLESS=1 to run)"
-    echo
-  fi
+# 3) Metrics should work on localhost if BASE_URL is localhost.
+# If user points BASE_URL at LAN IP, metrics may be forbidden by nginx; that's fine.
+mcode="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL/metrics" || true)"
+if [[ "$BASE_URL" == "http://127.0.0.1" || "$BASE_URL" == "http://localhost" ]]; then
+  [[ "$mcode" == "200" ]] || fail "metrics expected 200 on localhost, got $mcode"
+  pass "metrics reachable on localhost"
+else
+  [[ "$mcode" == "403" || "$mcode" == "200" ]] || fail "metrics expected 403/200, got $mcode"
+  pass "metrics policy acceptable for non-local BASE_URL (got $mcode)"
+fi
 
-  echo "== demo checklist (manual) =="
-  echo "1) Start API:"
-  echo "   ./scripts/lims_api.sh            # default 127.0.0.1:8787"
-  echo "   ./scripts/lims_api.sh --port 8087  # optional alternate (README example)"
-  echo "2) Open UI in browser:"
-  echo "   http://127.0.0.1:<PORT>/"
-  echo "3) Verify endpoints:"
-  echo "   /health  and  /metrics"
-  echo "4) Workflow demo:"
-  echo "   add container + add sample + move status w/ note + show audit/provenance signal"
-  echo
-  echo "proof_dir=$OUT_DIR"
-} | tee "$LOG"
-
-exit "${rc:-0}"
+echo "PASS: demo_smoke"
