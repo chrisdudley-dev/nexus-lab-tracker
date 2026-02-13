@@ -39,6 +39,3 @@ M7 — Observability + ops [NEXT]
 - Prometheus scrape + alert hooks (optional)
 - Runbook entries for journalctl/status patterns
 
-M8 — Schwab integration track [NEXT]
-- Secure OAuth token handling (no secrets in git)
-- Minimal connect/refresh + 1 data call
