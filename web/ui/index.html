@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nexus Lab Tracker — UI (M4)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+    button { padding: 10px 12px; cursor: pointer; }
+    pre { background: #111; color: #eee; padding: 12px; border-radius: 8px; overflow:auto; max-height: 45vh; }
+    .ok { color: #0a0; font-weight: 600; }
+    .bad { color: #c00; font-weight: 600; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; max-width: 1000px; }
+    code { background: #f3f3f3; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Nexus Lab Tracker — UI (M4)</h1>
+
+  <div class="card">
+    <div>API base: <code id="base"></code></div>
+    <div>Status: <span id="status" class="bad">not connected</span></div>
+    <div>Session: <code id="session">(none)</code></div>
+
+    <div class="row">
+      <button id="btnHealth">1) /health</button>
+      <button id="btnAuth">2) /auth/guest</button>
+      <button id="btnSamples">3) /sample/list</button>
+      <button id="btnAll">Run all</button>
+      <button id="btnClear">Clear</button>
+    </div>
+
+    <pre id="out"></pre>
+  </div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const out = $("out");
+  const status = $("status");
+  const sessionEl = $("session");
+
+  // Same-origin by default (nginx serves this page, and proxies / -> FastAPI)
+  const BASE = location.origin;
+  $("base").textContent = BASE;
+
+  let session = null;
+  function log(obj) {
+    const s = (typeof obj === "string") ? obj : JSON.stringify(obj, null, 2);
+    out.textContent += s + "\n";
+    out.scrollTop = out.scrollHeight;
+  }
+  function setOk(msg) { status.textContent = msg; status.className = "ok"; }
+  function setBad(msg) { status.textContent = msg; status.className = "bad"; }
+  function setSession(val) { session = val; sessionEl.textContent = val || "(none)"; }
+
+  async function doHealth() {
+    log("== GET /health ==");
+    const r = await fetch(BASE + "/health");
+    const j = await r.json();
+    log(j);
+    if (j && j.ok === true) setOk("health ok");
+    else setBad("health not ok");
+    return j;
+  }
+
+  async function doAuth() {
+    log("== POST /auth/guest ==");
+    const r = await fetch(BASE + "/auth/guest", { method: "POST" });
+    const j = await r.json();
+    log(j);
+
+    // Try a few common shapes without assuming too much.
+    const token =
+      j?.session || j?.session_id || j?.token || j?.data?.session || j?.data?.token || null;
+
+    if (!token) {
+      setBad("auth returned no session token (see output)");
+      return j;
+    }
+
+    setSession(token);
+    setOk("guest session created");
+    return j;
+  }
+
+  async function doSamples() {
+    log("== GET /sample/list (auth) ==");
+    const headers = {};
+    if (session) headers["X-Nexus-Session"] = session;
+
+    const r = await fetch(BASE + "/sample/list", { headers });
+    const txt = await r.text();
+    log("HTTP " + r.status);
+    log(txt);
+
+    if (r.status === 200) setOk("sample/list ok");
+    else if (r.status === 401) setBad("unauthorized (need session)");
+    else setBad("sample/list returned " + r.status);
+
+    return { status: r.status, body: txt };
+  }
+
+  $("btnHealth").onclick = () => doHealth().catch(e => { setBad("health error"); log(String(e)); });
+  $("btnAuth").onclick = () => doAuth().catch(e => { setBad("auth error"); log(String(e)); });
+  $("btnSamples").onclick = () => doSamples().catch(e => { setBad("samples error"); log(String(e)); });
+  $("btnAll").onclick = async () => {
+    try { await doHealth(); await doAuth(); await doSamples(); }
+    catch (e) { setBad("run-all error"); log(String(e)); }
+  };
+  $("btnClear").onclick = () => { out.textContent = ""; setBad("cleared"); setSession(null); };
+
+  log("UI loaded. Click 'Run all' to test /health -> /auth/guest -> /sample/list.");
+})();
+</script>
+</body>
+</html>
