@@ -73,7 +73,12 @@
 
     // Try a few common shapes without assuming too much.
     const token =
-      j?.session || j?.session_id || j?.token || j?.data?.session || j?.data?.token || null;
+      ((j?.session && typeof j.session === "object") ? j.session.id : j?.session) ||
+      j?.session_id ||
+      j?.token ||
+      (((j?.data?.session && typeof j.data.session === "object") ? j.data.session.id : j?.data?.session)) ||
+      j?.data?.token ||
+      null;
 
     if (!token) {
       setBad("auth returned no session token (see output)");
