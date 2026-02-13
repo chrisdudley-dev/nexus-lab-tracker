@@ -37,6 +37,12 @@ except Exception:
     def handle_sample_status_post(*args, **kwargs):
         return False
 
+# M5 write endpoints (containers + sample create/event append)
+try:
+    from lims.api_m5_write import router as m5_router
+except Exception:
+    m5_router = None
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -275,6 +281,9 @@ class _Adapter:
 
 
 app = FastAPI(title="Nexus LIMS API (FastAPI parity)", version="0.1")
+
+if m5_router is not None:
+    app.include_router(m5_router)
 
 
 @app.get("/health")
