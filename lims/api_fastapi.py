@@ -337,8 +337,8 @@ async def auth_guest(request: Request) -> JSONResponse:
 
     try:
         display_name = _clean_text_field("display_name", body.get("display_name"), required=False, max_len=64)
-    except ValueError as e:
-        return _auth_error(400, "bad_request", str(e))
+    except ValueError:
+        return _auth_error(400, "bad_request", "invalid display_name")
 
     conn = lims_db.connect()
     try:
