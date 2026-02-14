@@ -5,6 +5,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import parse_qs
+import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -13,6 +14,8 @@ try:
     from lims import db as lims_db
 except Exception:
     lims_db = None
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -210,7 +213,8 @@ async def container_add(request: Request) -> JSONResponse:
         kind = _clean_text(body.get("kind"), field="kind", required=True, max_len=32)
         location = _clean_text(body.get("location"), field="location", required=False, max_len=128)
     except ValueError as e:
-        return _api_error(400, "bad_request", str(e))
+        logger.warning("Validation error while creating container: %s", e)
+        return _api_error(400, "bad_request", "invalid container request")
 
     is_exclusive_raw = body.get("is_exclusive", 0)
     is_exclusive = 1 if str(is_exclusive_raw).strip().lower() in ("1", "true", "yes", "on") else 0
@@ -325,7 +329,8 @@ async def sample_add(request: Request) -> JSONResponse:
         notes = _clean_text(body.get("notes"), field="notes", required=False, max_len=2000)
         received_at = _clean_text(body.get("received_at"), field="received_at", required=False, max_len=64)
     except ValueError as e:
-        return _api_error(400, "bad_request", str(e))
+        logger.warning("Validation error while creating sample: %s", e)
+        return _api_error(400, "bad_request", "invalid sample request")
 
     status, err = _normalize_status(body.get("status"))
     if err is not None:
@@ -407,7 +412,8 @@ async def sample_event(request: Request) -> JSONResponse:
         note = _clean_text(body.get("note") or body.get("message"), field="note", required=False, max_len=2000)
         occurred_at = _clean_text(body.get("occurred_at"), field="occurred_at", required=False, max_len=64)
     except ValueError as e:
-        return _api_error(400, "bad_request", str(e))
+        logger.warning("Validation error while appending sample event: %s", e)
+        return _api_error(400, "bad_request", "invalid event request")
 
     conn = lims_db.connect()
     try:
