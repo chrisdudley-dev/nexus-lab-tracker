@@ -124,3 +124,22 @@ Local run:
 - API route map + curl templates: `docs/DEMO_API_CURL.md`
 - Proof runner (writes proof log under `report/`): `./scripts/demo_smoke.sh`
 
+
+## Canonical repo layout (M1)
+- Frontend: `frontend/app/`
+- API: `uvicorn api.main:app`
+- Repo layout notes: `docs/repo-layout.md`
+
+### Run (dev)
+
+API:
+```bash
+uvicorn api.main:app --host 127.0.0.1 --port 8789 --reload
+```
+
+Frontend:
+```bash
+cd frontend/app
+npm install
+npm run dev
+```

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Source-based regression for demo UI status flows in web/index.html.
+Source-based regression for demo UI status flows in legacy/web/index.html.
 
 We validate invariants introduced by the UI patches:
   - AUTOFILL_STATUS_FROM_SHOW exists inside doShow(), and doShow assigns sample.status into the status control.
@@ -22,7 +22,7 @@ def fail(msg: str) -> None:
     raise SystemExit(2)
 
 
-HTML_PATH = Path("web/index.html")
+HTML_PATH = Path("legacy/web/index.html")
 s = HTML_PATH.read_text("utf-8", errors="replace")
 
 MARK1 = "AUTOFILL_STATUS_FROM_SHOW"
@@ -44,7 +44,7 @@ def extract_function_body(src: str, name: str) -> str:
         src,
     )
     if not m:
-        fail(f"could not find `function {name}()` in web/index.html")
+        fail(f"could not find `function {name}()` in legacy/web/index.html")
 
     start_brace = m.end() - 1  # points at '{'
     i = start_brace + 1
