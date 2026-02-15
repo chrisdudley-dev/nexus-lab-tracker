@@ -37,6 +37,21 @@ export default function SamplesPanel() {
     } catch (e) {
       setAuthMsg(`Auth failed: ${e?.data?.message || e?.message || e}`);
     }
+
+
+  async function loadSamples() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const r = await api.get("/sample/list");
+      setSamples(r);
+    } catch (e) {
+      const msg = e?.data?.message || e?.data?.error || e?.message || String(e);
+      setErr(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
   }
 
   const [samples, setSamples] = useState(null)
