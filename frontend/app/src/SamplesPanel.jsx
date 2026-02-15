@@ -10,7 +10,25 @@ export default function SamplesPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
-  async function doGuestAuth() {
+  
+
+  const [health, setHealth] = useState(null);
+
+  async function loadHealth() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const r = await api.get("/health");
+      setHealth(r);
+    } catch (e) {
+      const msg = e?.data?.message || e?.data?.error || e?.message || String(e);
+      setErr(msg);
+      setHealth(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+async function doGuestAuth() {
     setErr(null);
     setAuthMsg("");
     setLoading(true);
@@ -81,13 +99,20 @@ export default function SamplesPanel() {
             Guest Sign-In
           </button>
           <button onClick={loadSamples} disabled={loading} style={{ padding: "6px 10px" }}>
-            Load samples
+            Load samples</button>
+          <button onClick={loadHealth} disabled={loading} style={{ padding: "6px 10px" }}>
+            Load health
           </button>
           {authMsg ? <span style={{ marginLeft: 8 }}>{authMsg}</span> : null}
         </div>
 
         {loading ? <div style={{ marginTop: 8, opacity: 0.8 }}>Loading…</div> : null}
         {err ? <div style={{ marginTop: 8, color: "crimson" }}>Error: {err}</div> : null}
+        {health ? (
+          <div style={{ marginTop: 8, opacity: 0.85 }}>
+            <strong>Health:</strong> <code style={{ fontSize: 12 }}>{JSON.stringify(health)}</code>
+          </div>
+        ) : null}
       </div>
 
       <div style={{ marginBottom: 10, opacity: 0.85 }}>
@@ -127,9 +152,12 @@ export default function SamplesPanel() {
         </div>
       ) : (
         <pre style={{ background: "#111", color: "#eee", padding: 12, borderRadius: 10, overflowX: "auto" }}>
-{samplesResp ? JSON.stringify(samplesResp, null, 2) : "Click “Guest Sign-In”, then “Load samples”."}
+{samplesResp ? JSON.stringify(samplesResp, null, 2) : "Click “Guest Sign-In”, then “Load samples</button>
+          <button onClick={loadHealth} disabled={loading} style={{ padding: "6px 10px" }}>
+            Load health”."}
         </pre>
       )}
     </div>
   );
 }
+\n
