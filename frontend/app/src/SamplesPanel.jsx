@@ -38,7 +38,6 @@ export default function SamplesPanel() {
       setAuthMsg(`Auth failed: ${e?.data?.message || e?.message || e}`);
     }
   }
-  }
 
   const [samples, setSamples] = useState(null)
   const [loading, setLoading] = useState(false)
