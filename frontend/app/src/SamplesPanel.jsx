@@ -1,32 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from "react";
 import { api, setSession, getSession } from "./lib/api/client";
 
-async function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}) {
-  const h = { Accept: 'application/json', ...headers }
-  const init = { method, headers: h }
-  if (body !== null) {
-    init.headers = { 'Content-Type': 'application/json', ...init.headers }
-    init.body = JSON.stringify(body)
-  }
-  const r = await fetch(url, init)
-  const text = await r.text()
-  let data = null
-  try { data = JSON.parse(text) } catch { /* keep raw */ }
-  if (!r.ok) {
-    const msg = (data && (data.detail || data.error || data.message)) ? JSON.stringify(data) : text
-    throw new Error(`HTTP ${r.status}: ${String(msg).slice(0, 300)}`)
-  }
-  return data ?? { raw: text }
-}
-
 export default function SamplesPanel() {
-
   const [authMsg, setAuthMsg] = useState("");
   const [displayName, setDisplayName] = useState("Guest");
   const [sessionId, setSessionId] = useState(getSession());
 
+  const [samplesResp, setSamplesResp] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
   async function doGuestAuth() {
+    setErr(null);
     setAuthMsg("");
+    setLoading(true);
     try {
       const r = await api.post("/auth/guest", { display_name: displayName });
       const sid = r?.session?.id || r?.session || "";
@@ -35,22 +22,6 @@ export default function SamplesPanel() {
       setSessionId(sid);
       setAuthMsg("Signed in (guest).");
     } catch (e) {
-      setAuthMsg(`Auth failed: ${e?.data?.message || e?.message || e}`);
-    }
-  }
-
-  const [samples, setSamples] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState(null)
-
-
-  async function loadSamples() {
-    setErr(null);
-    setLoading(true);
-    try {
-      const r = await api.get("/sample/list");
-      setSamples(r);
-    } catch (e) {
       const msg = e?.data?.message || e?.data?.error || e?.message || String(e);
       setErr(msg);
     } finally {
@@ -58,10 +29,107 @@ export default function SamplesPanel() {
     }
   }
 
-  const [selectedId, setSelectedId] = useState(null)
-  const [selectedShow, setSelectedShow] = useState(null)
-  const [selectedEvents, setSelectedEvents] = useState(null)
+  async function loadSamples() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const r = await api.get("/sample/list");
+      setSamplesResp(r);
+    } catch (e) {
+      const msg = e?.data?.message || e?.data?.error || e?.message || String(e);
+      setErr(msg);
+      setSamplesResp(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // If a session already exists, try loading once on mount.
+  useEffect(() => {
+    if (getSession()) loadSamples();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const rows = useMemo(() => {
+    const r = samplesResp;
+    if (!r) return [];
+    if (Array.isArray(r)) return r;
+    if (Array.isArray(r.samples)) return r.samples;
+    if (Array.isArray(r.items)) return r.items;
+    return [];
+  }, [samplesResp]);
+
+  return (
+    <div style={{ padding: 12 }}>
+      <h2 style={{ marginTop: 0 }}>Demo: Samples</h2>
+
+      <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <strong>Auth</strong>
+          <span style={{ opacity: 0.8 }}>session:</span>
+          <code style={{ fontSize: 12 }}>{sessionId || "(none)"}</code>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="display name"
+            style={{ padding: "6px 8px" }}
+          />
+          <button onClick={doGuestAuth} disabled={loading} style={{ padding: "6px 10px" }}>
+            Guest Sign-In
+          </button>
+          <button onClick={loadSamples} disabled={loading} style={{ padding: "6px 10px" }}>
+            Load samples
+          </button>
+          {authMsg ? <span style={{ marginLeft: 8 }}>{authMsg}</span> : null}
+        </div>
+
+        {loading ? <div style={{ marginTop: 8, opacity: 0.8 }}>Loading…</div> : null}
+        {err ? <div style={{ marginTop: 8, color: "crimson" }}>Error: {err}</div> : null}
+      </div>
+
+      <div style={{ marginBottom: 10, opacity: 0.85 }}>
+        {samplesResp?.count != null ? (
+          <span>
+            Returned <strong>{rows.length}</strong> / <strong>{samplesResp.count}</strong>
+          </span>
+        ) : (
+          <span>Returned <strong>{rows.length}</strong></span>
+        )}
+      </div>
+
+      {rows.length ? (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                {["id", "external_id", "status", "container_id", "created_at"].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "8px 10px", borderBottom: "1px solid #ccc" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s, i) => (
+                <tr key={s?.id ?? s?.external_id ?? i}>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #eee" }}>{s?.id ?? "—"}</td>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #eee" }}>{s?.external_id ?? "—"}</td>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #eee" }}>{s?.status ?? "—"}</td>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #eee" }}>{s?.container_id ?? "—"}</td>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid #eee" }}>{s?.created_at ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <pre style={{ background: "#111", color: "#eee", padding: 12, borderRadius: 10, overflowX: "auto" }}>
+{samplesResp ? JSON.stringify(samplesResp, null, 2) : "Click “Guest Sign-In”, then “Load samples”."}
+        </pre>
+      )}
+    </div>
+  );
 }
-
-
-// M4: API client wrapper (Issue #94)
