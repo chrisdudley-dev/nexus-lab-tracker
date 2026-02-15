@@ -6,7 +6,9 @@ export default function SamplesPanel() {
   const [displayName, setDisplayName] = useState("Guest");
   const [sessionId, setSessionId] = useState(getSession());
 
+  const [health, setHealth] = useState(null);
   const [samplesResp, setSamplesResp] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -29,6 +31,21 @@ export default function SamplesPanel() {
     }
   }
 
+  async function loadHealth() {
+    setErr(null);
+    setLoading(true);
+    try {
+      const r = await api.get("/health");
+      setHealth(r);
+    } catch (e) {
+      const msg = e?.data?.message || e?.data?.error || e?.message || String(e);
+      setErr(msg);
+      setHealth(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadSamples() {
     setErr(null);
     setLoading(true);
@@ -44,7 +61,7 @@ export default function SamplesPanel() {
     }
   }
 
-  // If a session already exists, try loading once on mount.
+  // Optional: if a session exists already, try loading samples once on mount.
   useEffect(() => {
     if (getSession()) loadSamples();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,11 +100,21 @@ export default function SamplesPanel() {
           <button onClick={loadSamples} disabled={loading} style={{ padding: "6px 10px" }}>
             Load samples
           </button>
+          <button onClick={loadHealth} disabled={loading} style={{ padding: "6px 10px" }}>
+            Load health
+          </button>
           {authMsg ? <span style={{ marginLeft: 8 }}>{authMsg}</span> : null}
         </div>
 
         {loading ? <div style={{ marginTop: 8, opacity: 0.8 }}>Loading…</div> : null}
         {err ? <div style={{ marginTop: 8, color: "crimson" }}>Error: {err}</div> : null}
+
+        {health ? (
+          <div style={{ marginTop: 10, opacity: 0.9 }}>
+            <strong>Health:</strong>{" "}
+            <code style={{ fontSize: 12 }}>{typeof health === "string" ? health : JSON.stringify(health)}</code>
+          </div>
+        ) : null}
       </div>
 
       <div style={{ marginBottom: 10, opacity: 0.85 }}>
@@ -96,7 +123,9 @@ export default function SamplesPanel() {
             Returned <strong>{rows.length}</strong> / <strong>{samplesResp.count}</strong>
           </span>
         ) : (
-          <span>Returned <strong>{rows.length}</strong></span>
+          <span>
+            Returned <strong>{rows.length}</strong>
+          </span>
         )}
       </div>
 
@@ -127,7 +156,7 @@ export default function SamplesPanel() {
         </div>
       ) : (
         <pre style={{ background: "#111", color: "#eee", padding: 12, borderRadius: 10, overflowX: "auto" }}>
-{samplesResp ? JSON.stringify(samplesResp, null, 2) : "Click “Guest Sign-In”, then “Load samples”."}
+{samplesResp ? JSON.stringify(samplesResp, null, 2) : "Click Guest Sign-In, then Load samples. Use Load health to check /health."}
         </pre>
       )}
     </div>
