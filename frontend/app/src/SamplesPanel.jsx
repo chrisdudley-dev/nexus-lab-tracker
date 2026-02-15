@@ -37,6 +37,12 @@ export default function SamplesPanel() {
     } catch (e) {
       setAuthMsg(`Auth failed: ${e?.data?.message || e?.message || e}`);
     }
+  }
+  }
+
+  const [samples, setSamples] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState(null)
 
 
   async function loadSamples() {
@@ -52,11 +58,6 @@ export default function SamplesPanel() {
       setLoading(false);
     }
   }
-  }
-
-  const [samples, setSamples] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState(null)
 
   const [selectedId, setSelectedId] = useState(null)
   const [selectedShow, setSelectedShow] = useState(null)
