@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WEB_DIR="${REPO_ROOT}/frontend/app"
+WEB_DIR="${REPO_ROOT}/frontend"
 DIST_DIR="${WEB_DIR}/dist"
 WEBROOT="/var/www/nexus-web-react"
 
