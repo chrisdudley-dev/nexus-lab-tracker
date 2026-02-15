@@ -126,7 +126,7 @@ Local run:
 
 
 ## Canonical repo layout (M1)
-- Frontend: `frontend/app/`
+- Frontend: `frontend/`
 - API: `uvicorn api.main:app`
 - Repo layout notes: `docs/repo-layout.md`
 
@@ -139,7 +139,7 @@ uvicorn api.main:app --host 127.0.0.1 --port 8789 --reload
 
 Frontend:
 ```bash
-cd frontend/app
+cd frontend
 npm install
 npm run dev
 ```
