@@ -178,3 +178,6 @@ export default function SamplesPanel() {
   )
 }
 
+
+// M4: API client wrapper (Issue #94)
+import { api } from "./lib/api/client";
