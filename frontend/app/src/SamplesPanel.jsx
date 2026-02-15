@@ -19,6 +19,25 @@ async function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}
 }
 
 export default function SamplesPanel() {
+
+  const [authMsg, setAuthMsg] = useState("");
+  const [displayName, setDisplayName] = useState("Guest");
+  const [sessionId, setSessionId] = useState(getSession());
+
+  async function doGuestAuth() {
+    setAuthMsg("");
+    try {
+      const r = await api.post("/auth/guest", { display_name: displayName });
+      const sid = r?.session?.id || r?.session || "";
+      if (!sid) throw new Error("No session id returned");
+      setSession(sid);
+      setSessionId(sid);
+      setAuthMsg("Signed in (guest).");
+    } catch (e) {
+      setAuthMsg(`Auth failed: ${e?.data?.message || e?.message || e}`);
+    }
+  }
+
   const [samples, setSamples] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
@@ -180,4 +199,4 @@ export default function SamplesPanel() {
 
 
 // M4: API client wrapper (Issue #94)
-import { api } from "./lib/api/client";
+import { api, setSession, getSession } from "./lib/api/client";
