@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { api, setSession, getSession } from "./lib/api/client";
 
 async function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}) {
   const h = { Accept: 'application/json', ...headers }
@@ -199,4 +200,3 @@ export default function SamplesPanel() {
 
 
 // M4: API client wrapper (Issue #94)
-import { api, setSession, getSession } from "./lib/api/client";
