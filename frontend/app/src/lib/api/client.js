@@ -22,7 +22,10 @@ export function setSession(token) {
 function buildHeaders(extra) {
   const h = { "Content-Type": "application/json", ...(extra || {}) };
   const session = getSession();
-  if (session) h["X-Session"] = session; // adjust if your API expects a different header
+  if (session) {
+    h["X-Nexus-Session"] = session;
+    h["X-Session-Id"] = session; // accepted alias
+  }
   return h;
 }
 
