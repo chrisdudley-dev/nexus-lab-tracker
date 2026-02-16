@@ -3,8 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
-import { loadBoard, saveBoard } from '../../lib/kanban/storage.js'
-
+import { loadBoard, saveBoard, clearBoard } from '../../lib/kanban/storage.js'
 function Inspector({ card, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -112,6 +111,13 @@ export default function KanbanApp() {
     if (!state.selectedCardId) return
     dispatch({ type: 'update', cardId: state.selectedCardId, patch })
   }
+  function resetBoard() {
+    const ok = confirm('Reset Kanban board? This clears local saved state.')
+    if (!ok) return
+    clearBoard()
+    dispatch({ type: 'reset' })
+  }
+
   function deleteCard() {
     if (!state.selectedCardId) return
     dispatch({ type: 'delete', cardId: state.selectedCardId })
@@ -122,6 +128,7 @@ export default function KanbanApp() {
       <div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <button onClick={addCard} className="btn btnPrimary">Add card</button>
+          <button onClick={resetBoard} className="btn">Reset board</button>
           <div style={{ opacity: 0.75, fontSize: 13 }}>
             Drag cards between columns • Click to edit in Inspector
           </div>

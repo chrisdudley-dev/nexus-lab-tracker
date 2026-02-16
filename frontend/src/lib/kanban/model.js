@@ -46,6 +46,9 @@ function insertAt(arr, id, index) {
 
 export function reducer(state, action) {
   switch (action.type) {
+    case 'reset':
+      return createInitialState()
+
     case 'select':
       return { ...state, selectedCardId: action.cardId ?? null }
 
