@@ -3,6 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
+import { loadBoard, saveBoard } from '../../lib/kanban/storage.js'
 
 function Inspector({ card, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
@@ -59,7 +60,13 @@ function Inspector({ card, onSave, onDelete, onClose }) {
 }
 
 export default function KanbanApp() {
-  const [state, dispatch] = useReducer(reducer, null, createInitialState)
+  const [state, dispatch] = useReducer(reducer, null, () => loadBoard() ?? createInitialState())
+
+  // Debounced local persistence
+  useEffect(() => {
+    const t = setTimeout(() => { saveBoard(state) }, 350)
+    return () => clearTimeout(t)
+  }, [state])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
