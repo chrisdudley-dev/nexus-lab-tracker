@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import SamplesPanel from '../SamplesPanel.jsx'
 import KanbanBoard from '../components/kanban/KanbanBoard.jsx'
+import KanbanInspector from '../components/kanban/KanbanInspector.jsx'
+import { createInitialState, reducer } from '../lib/kanban/model.js'
 
 export default function Demo() {
   const [tab, setTab] = useState('samples')
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
+  const [kstate, dispatch] = useReducer(reducer, undefined, createInitialState)
 
   async function loadHealth() {
     setLoading(true); setErr(null)
@@ -54,7 +57,17 @@ export default function Demo() {
       {tab === 'samples' ? (
         <SamplesPanel />
       ) : tab === 'kanban' ? (
-        <KanbanBoard columns={columns} onCardClick={(c) => alert(c.title)} />
+        <div style={{ display: 'grid', gap: 12 }}>
+        <KanbanBoard
+          columns={kstate.columnOrder.map((colId) => ({
+            id: colId,
+            title: kstate.columns[colId].title,
+            cards: kstate.columns[colId].cardIds.map((id) => kstate.cards[id]).filter(Boolean),
+          }))}
+          onCardClick={(c) => dispatch({ type: 'select', cardId: c.id })}
+        />
+        <KanbanInspector state={kstate} dispatch={dispatch} />
+      </div>
       ) : (
         <div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
