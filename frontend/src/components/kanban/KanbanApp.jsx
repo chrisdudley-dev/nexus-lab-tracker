@@ -3,7 +3,9 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
-import { loadBoard, saveBoard, clearBoard, validateBoard } from '../../lib/kanban/storage.js'function Inspector({ card, onSave, onDelete, onClose }) {
+import { loadBoard, saveBoard, clearBoard, validateBoard } from '../../lib/kanban/storage.js'
+
+function Inspector({ card, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
 
