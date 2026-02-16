@@ -46,6 +46,18 @@ function insertAt(arr, id, index) {
 
 export function reducer(state, action) {
   switch (action.type) {
+    case 'hydrate': {
+      const base = createInitialState()
+      const incoming = action.state || {}
+      return {
+        ...base,
+        columnOrder: incoming.columnOrder ?? base.columnOrder,
+        columns: incoming.columns ?? base.columns,
+        cards: incoming.cards ?? base.cards,
+        selectedCardId: null,
+      }
+    }
+
     case 'reset':
       return createInitialState()
 
