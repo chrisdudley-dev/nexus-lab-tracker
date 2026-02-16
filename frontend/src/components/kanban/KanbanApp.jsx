@@ -3,8 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
-import { loadBoard, saveBoard, clearBoard } from '../../lib/kanban/storage.js'
-function Inspector({ card, onSave, onDelete, onClose }) {
+import { loadBoard, saveBoard, clearBoard, validateBoard } from '../../lib/kanban/storage.js'function Inspector({ card, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
 
@@ -21,6 +20,7 @@ function Inspector({ card, onSave, onDelete, onClose }) {
       </div>
 
       {!card ? (
+        {ioErr ? <div style={{ color: 'crimson', fontSize: 13, marginTop: 8 }}>IO error: {ioErr}</div> : null}
         <div style={{ opacity: 0.75, fontSize: 13 }}>
           Select a card to edit it, or click “Add card”.
         </div>
@@ -59,6 +59,7 @@ function Inspector({ card, onSave, onDelete, onClose }) {
 }
 
 export default function KanbanApp() {
+  const [ioErr, setIoErr] = useState(null)
   const [state, dispatch] = useReducer(reducer, null, () => loadBoard() ?? createInitialState())
 
   // Debounced local persistence
@@ -117,6 +118,46 @@ export default function KanbanApp() {
     clearBoard()
     dispatch({ type: 'reset' })
   }
+  async function exportBoard() {
+    setIoErr(null)
+    try {
+      const payload = {
+        columnOrder: state.columnOrder ?? [],
+        columns: state.columns ?? {},
+        cards: state.cards ?? {},
+      }
+      const text = JSON.stringify(payload, null, 2)
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        alert('Board JSON copied to clipboard.')
+      } else {
+        prompt('Copy board JSON:', text)
+      }
+    } catch (e) {
+      setIoErr(String(e?.message || e))
+    }
+  }
+
+  function importBoard() {
+    setIoErr(null)
+    try {
+      const raw = prompt('Paste board JSON to import:')
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (!validateBoard(parsed)) throw new Error('Invalid board JSON shape.')
+      const payload = {
+        columnOrder: parsed.columnOrder,
+        columns: parsed.columns,
+        cards: parsed.cards,
+      }
+      dispatch({ type: 'hydrate', state: payload })
+      saveBoard(payload)
+      alert('Imported board JSON.')
+    } catch (e) {
+      setIoErr(String(e?.message || e))
+    }
+  }
+
 
   function deleteCard() {
     if (!state.selectedCardId) return
@@ -129,6 +170,8 @@ export default function KanbanApp() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <button onClick={addCard} className="btn btnPrimary">Add card</button>
           <button onClick={resetBoard} className="btn">Reset board</button>
+          <button onClick={exportBoard} className="btn">Export JSON</button>
+          <button onClick={importBoard} className="btn">Import JSON</button>
           <div style={{ opacity: 0.75, fontSize: 13 }}>
             Drag cards between columns • Click to edit in Inspector
           </div>

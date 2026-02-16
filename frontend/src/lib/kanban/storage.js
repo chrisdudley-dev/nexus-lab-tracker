@@ -4,6 +4,15 @@ function isObject(x) {
   return x !== null && typeof x === 'object' && !Array.isArray(x)
 }
 
+export function validateBoard(parsed) {
+  // Minimal shape validation (tolerant of extra fields)
+  if (!isObject(parsed)) return false
+  if (!Array.isArray(parsed.columnOrder)) return false
+  if (!isObject(parsed.columns)) return false
+  if (!isObject(parsed.cards)) return false
+  return true
+}
+
 export function loadBoard() {
   try {
     const raw = localStorage.getItem(KEY)
