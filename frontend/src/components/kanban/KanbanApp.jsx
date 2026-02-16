@@ -1,8 +1,10 @@
 import { useMemo, useReducer, useState, useEffect } from 'react'
+import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCorners } from '@dnd-kit/core'
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
 
-function Panel({ card, onSave, onDelete, onClose }) {
+function Inspector({ card, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
 
@@ -20,7 +22,7 @@ function Panel({ card, onSave, onDelete, onClose }) {
 
       {!card ? (
         <div style={{ opacity: 0.75, fontSize: 13 }}>
-          Select a card to edit it, or click "Add card".
+          Select a card to edit it, or click “Add card”.
         </div>
       ) : (
         <>
@@ -43,17 +45,10 @@ function Panel({ card, onSave, onDelete, onClose }) {
           </label>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              onClick={() => onSave({ title: title.trim() || 'Untitled', subtitle })}
-              className="btn btnPrimary"
-            >
+            <button onClick={() => onSave({ title: title.trim() || 'Untitled', subtitle })} className="btn btnPrimary">
               Save
             </button>
-            <button
-              onClick={onDelete}
-              className="btn"
-              style={{ borderColor: '#fecaca' }}
-            >
+            <button onClick={onDelete} className="btn" style={{ borderColor: '#fecaca' }}>
               Delete
             </button>
           </div>
@@ -66,15 +61,42 @@ function Panel({ card, onSave, onDelete, onClose }) {
 export default function KanbanApp() {
   const [state, dispatch] = useReducer(reducer, null, createInitialState)
 
-  const columns = useMemo(() => {
-    return state.columnOrder.map((colId) => {
-      const col = state.columns[colId]
-      const cards = col.cardIds.map((id) => state.cards[id]).filter(Boolean)
-      return { id: col.id, title: col.title, cards }
-    })
-  }, [state])
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   const selected = state.selectedCardId ? state.cards[state.selectedCardId] : null
+
+  function findContainer(id) {
+    if (!id) return null
+    if (state.columns[id]) return id
+    for (const colId of state.columnOrder) {
+      if (state.columns[colId].cardIds.includes(id)) return colId
+    }
+    return null
+  }
+
+  function onDragEnd(event) {
+    const { active, over } = event
+    if (!over) return
+
+    const activeId = String(active.id)
+    const overId = String(over.id)
+
+    const fromColId = findContainer(activeId)
+    const toColId = findContainer(overId)
+
+    if (!fromColId || !toColId) return
+    if (fromColId === toColId && activeId === overId) return
+
+    const toIds = state.columns[toColId].cardIds
+    const toIndex = state.columns[toColId].cardIds.includes(overId)
+      ? toIds.indexOf(overId)
+      : toIds.length
+
+    dispatch({ type: 'move', cardId: activeId, fromColId, toColId, toIndex })
+  }
 
   function addCard() {
     dispatch({ type: 'add', colId: 'todo', card: { title: 'New card', subtitle: '' } })
@@ -94,17 +116,25 @@ export default function KanbanApp() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
           <button onClick={addCard} className="btn btnPrimary">Add card</button>
           <div style={{ opacity: 0.75, fontSize: 13 }}>
-            Click a card to edit • Empty columns show a hint
+            Drag cards between columns • Click to edit in Inspector
           </div>
         </div>
 
-        <KanbanBoard
-          columns={columns}
-          onCardClick={(card) => dispatch({ type: 'select', cardId: card.id })}
-        />
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragEnd={onDragEnd}
+        >
+          <KanbanBoard
+            columnOrder={state.columnOrder}
+            columnsById={state.columns}
+            cardsById={state.cards}
+            onCardClick={(c) => dispatch({ type: 'select', cardId: c.id })}
+          />
+        </DndContext>
       </div>
 
-      <Panel
+      <Inspector
         card={selected}
         onSave={saveCard}
         onDelete={deleteCard}

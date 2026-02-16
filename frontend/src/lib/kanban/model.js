@@ -10,11 +10,11 @@ export function createInitialState() {
     columns[c.id] = { id: c.id, title: c.title, cardIds: [] }
   }
   const seedCards = {
-    c1: { id: 'c1', title: 'Example card', subtitle: 'Replace with sample-backed data' },
+    c1: { id: 'c1', title: 'Example card', subtitle: 'Drag me between columns' },
   }
   columns.todo.cardIds = ['c1']
   return {
-    columnOrder: DEFAULT_COLUMNS.map(c => c.id),
+    columnOrder: DEFAULT_COLUMNS.map((c) => c.id),
     columns,
     cards: seedCards,
     selectedCardId: null,
@@ -27,6 +27,21 @@ export function findCardLocation(state, cardId) {
     if (idx !== -1) return { colId, index: idx }
   }
   return null
+}
+
+function removeId(arr, id) {
+  const i = arr.indexOf(id)
+  if (i === -1) return arr
+  const next = arr.slice()
+  next.splice(i, 1)
+  return next
+}
+
+function insertAt(arr, id, index) {
+  const next = arr.slice()
+  const i = Math.max(0, Math.min(index, next.length))
+  next.splice(i, 0, id)
+  return next
 }
 
 export function reducer(state, action) {
@@ -65,34 +80,38 @@ export function reducer(state, action) {
       const loc = findCardLocation(state, id)
       const nextColumns = { ...state.columns }
       if (loc) {
-        const cur = nextColumns[loc.colId]
-        nextColumns[loc.colId] = { ...cur, cardIds: cur.cardIds.filter(x => x !== id) }
+        const col = state.columns[loc.colId]
+        nextColumns[loc.colId] = { ...col, cardIds: removeId(col.cardIds, id) }
       }
       const nextCards = { ...state.cards }
       delete nextCards[id]
       return {
         ...state,
-        cards: nextCards,
         columns: nextColumns,
+        cards: nextCards,
         selectedCardId: state.selectedCardId === id ? null : state.selectedCardId,
       }
     }
 
     case 'move': {
-      const { cardId, toColId } = action
-      if (!cardId || !toColId) return state
-      const loc = findCardLocation(state, cardId)
-      if (!loc) return state
-      if (loc.colId === toColId) return state
-      const fromCol = state.columns[loc.colId]
+      const { cardId, fromColId, toColId, toIndex } = action
+      if (!cardId || !fromColId || !toColId) return state
+      if (!state.cards[cardId]) return state
+
+      const fromCol = state.columns[fromColId]
       const toCol = state.columns[toColId]
       if (!fromCol || !toCol) return state
+
+      const fromIds = removeId(fromCol.cardIds, cardId)
+      const baseToIds = fromColId === toColId ? fromIds : toCol.cardIds.slice()
+      const nextToIds = insertAt(baseToIds, cardId, Number.isFinite(toIndex) ? toIndex : baseToIds.length)
+
       return {
         ...state,
         columns: {
           ...state.columns,
-          [loc.colId]: { ...fromCol, cardIds: fromCol.cardIds.filter(x => x !== cardId) },
-          [toColId]: { ...toCol, cardIds: [cardId, ...toCol.cardIds] },
+          [fromColId]: { ...fromCol, cardIds: fromIds },
+          [toColId]: { ...toCol, cardIds: nextToIds },
         },
       }
     }
