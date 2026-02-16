@@ -1,5 +1,0 @@
-Legacy Kanban cleanup report
-Repo: /home/christopher/nexus-lab-tracker
-
-Candidate legacy static/template/public files containing 'kanban' in name:
- - (none found)
