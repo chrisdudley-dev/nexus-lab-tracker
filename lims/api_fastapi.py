@@ -496,3 +496,85 @@ async def sample_status(request: Request):
     if not ok:
         return JSONResponse(status_code=404, content={"schema": "nexus_api_error", "schema_version": 1, "ok": False, "error": "not_found"})
     return JSONResponse(status_code=h.status_code, content=h.payload)
+
+
+# --- Kanban board persistence API (M4) ---
+from typing import Dict, List, Optional
+import os, json, time
+from pathlib import Path
+from pydantic import BaseModel, Field
+from fastapi import HTTPException
+
+class KanbanCard(BaseModel):
+    id: str
+    title: str
+    subtitle: str = ""
+
+class KanbanColumn(BaseModel):
+    id: str
+    title: str
+    cardIds: List[str] = Field(default_factory=list)
+
+class KanbanBoardState(BaseModel):
+    columnOrder: List[str]
+    columns: Dict[str, KanbanColumn]
+    cards: Dict[str, KanbanCard]
+    selectedCardId: Optional[str] = None
+    updatedAt: Optional[float] = None
+
+def _kanban_store_path() -> Path:
+    env = os.environ.get("KANBAN_STORE_PATH")
+    if env:
+        return Path(env)
+    # repo_root/data/kanban.json (repo_root is parent of 'lims' dir in this repo)
+    repo_root = Path(__file__).resolve().parents[1]
+    return repo_root / "data" / "kanban.json"
+
+def _default_board() -> dict:
+    return {
+        "columnOrder": ["todo", "doing", "done"],
+        "columns": {
+            "todo":  {"id": "todo",  "title": "To Do",       "cardIds": ["c1"]},
+            "doing": {"id": "doing", "title": "In Progress", "cardIds": []},
+            "done":  {"id": "done",  "title": "Done",        "cardIds": []},
+        },
+        "cards": {
+            "c1": {"id": "c1", "title": "Example card", "subtitle": "Persisted via /api/kanban/board"},
+        },
+        "selectedCardId": None,
+        "updatedAt": time.time(),
+    }
+
+def _read_board() -> dict:
+    path = _kanban_store_path()
+    if not path.exists():
+        return _default_board()
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return _default_board()
+        data["updatedAt"] = time.time()
+        return data
+    except Exception:
+        return _default_board()
+
+def _write_board(board: dict) -> None:
+    path = _kanban_store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    board = dict(board)
+    board["updatedAt"] = time.time()
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(board, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+@app.get("/kanban/board", response_model=KanbanBoardState)
+def kanban_get_board():
+    return _read_board()
+
+@app.put("/kanban/board", response_model=KanbanBoardState)
+def kanban_put_board(state: KanbanBoardState):
+    if not state.columnOrder:
+        raise HTTPException(status_code=400, detail="columnOrder must not be empty")
+    _write_board(state.model_dump())
+    return _read_board()
