@@ -3,8 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, close
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
-import { loadBoard, saveBoard, clearBoard, validateBoard } from '../../lib/kanban/storage.js'
-
+import { loadBoard, saveBoard, clearBoard, validateBoard, loadBoardRemote, saveBoardRemote } from '../../lib/kanban/storage.js'
 function Inspector({ card, ioErr, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
@@ -64,9 +63,22 @@ export default function KanbanApp() {
   const [ioErr, setIoErr] = useState(null)
   const [state, dispatch] = useReducer(reducer, null, () => loadBoard() ?? createInitialState())
 
+  // Try backend persistence first (falls back to localStorage initializer)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const remote = await loadBoardRemote()
+      if (!alive || !remote) return
+      dispatch({ type: 'hydrate', state: remote })
+      // keep local cache in sync too
+      saveBoard(remote)
+    })()
+    return () => { alive = false }
+  }, [])
+
   // Debounced local persistence
   useEffect(() => {
-    const t = setTimeout(() => { saveBoard(state) }, 350)
+    const t = setTimeout(() => { saveBoard(state); saveBoardRemote(state).catch(() => {}) }, 350)
     return () => clearTimeout(t)
   }, [state])
 
