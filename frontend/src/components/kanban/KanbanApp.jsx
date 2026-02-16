@@ -5,7 +5,7 @@ import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
 import { loadBoard, saveBoard, clearBoard, validateBoard } from '../../lib/kanban/storage.js'
 
-function Inspector({ card, onSave, onDelete, onClose }) {
+function Inspector({ card, ioErr, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
 
@@ -21,8 +21,8 @@ function Inspector({ card, onSave, onDelete, onClose }) {
         {card ? <button onClick={onClose} className="btn">Close</button> : null}
       </div>
 
+      {ioErr ? <div style={{ color: 'crimson', fontSize: 13, marginTop: 8 }}>IO error: {ioErr}</div> : null}
       {!card ? (
-        {ioErr ? <div style={{ color: 'crimson', fontSize: 13, marginTop: 8 }}>IO error: {ioErr}</div> : null}
         <div style={{ opacity: 0.75, fontSize: 13 }}>
           Select a card to edit it, or click “Add card”.
         </div>
@@ -193,7 +193,7 @@ export default function KanbanApp() {
         </DndContext>
       </div>
 
-      <Inspector
+      <Inspector ioErr={ioErr}
         card={selected}
         onSave={saveCard}
         onDelete={deleteCard}
