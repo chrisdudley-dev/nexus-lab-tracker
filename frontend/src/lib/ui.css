@@ -1,0 +1,55 @@
+/* Simple baseline UI system for M2 */
+:root{
+  --maxw: 980px;
+  --pad: 24px;
+  --border: #e5e7eb;
+  --text: #111;
+  --muted: rgba(17,17,17,.72);
+  --bg: #fff;
+}
+.container{
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: var(--pad);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--text);
+}
+.header{ margin-bottom: 18px; }
+.headerRow{
+  display:flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.subtitle{ opacity: .75; margin-top: 6px; }
+.nav{ display:flex; gap: 10px; flex-wrap: wrap; }
+.navLink{
+  padding: 8px 12px; border-radius: 10px; text-decoration: none;
+  border: 1px solid var(--border); color: #222;
+}
+.navLinkActive{ background: var(--border); color: var(--text); }
+.main{ min-height: 420px; }
+.footer{
+  margin-top: 28px; padding-top: 12px; border-top: 1px solid #eee;
+  opacity: .7; font-size: 14px;
+}
+.row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.btn{
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); cursor: pointer;
+}
+.btn:disabled{ opacity: .6; cursor: default; }
+.btnPrimary{ border-color: #111; background: #111; color: #fff; }
+.muted{ opacity: .8; }
+.error{ color: crimson; }
+.ok{ color: green; }
+.pre{
+  background:#111; color:#eee; padding:16px; border-radius:10px;
+  overflow-x:auto; line-height:1.35;
+}
+
+/* Responsive baseline */
+@media (max-width: 640px){
+  :root{ --pad: 16px; }
+  .headerRow{ flex-direction: column; align-items: flex-start; }
+  .nav{ width: 100%; }
+  .navLink{ padding: 10px 12px; }
+}
