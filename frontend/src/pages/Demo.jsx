@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useState } from 'react'
 import SamplesPanel from '../SamplesPanel.jsx'
 import KanbanApp from '../components/kanban/KanbanApp.jsx'
 
@@ -7,7 +7,6 @@ export default function Demo() {
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
-  const [kstate, dispatch] = useReducer(reducer, undefined, createInitialState)
 
   async function loadHealth() {
     setLoading(true); setErr(null)
@@ -25,12 +24,6 @@ export default function Demo() {
   }
 
   useEffect(() => { loadHealth() }, [])
-
-  const columns = [
-    { id: 'todo', title: 'To Do', cards: [{ id: 'c1', title: 'Example card', subtitle: 'Replace with sample-backed data' }] },
-    { id: 'doing', title: 'In Progress', cards: [] },
-    { id: 'done', title: 'Done', cards: [] },
-  ]
 
   return (
     <div>
