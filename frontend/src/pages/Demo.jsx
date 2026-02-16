@@ -28,6 +28,12 @@ export default function Demo() {
 
   useEffect(() => { loadHealth() }, [])
 
+  const columns = [
+    { id: 'todo', title: 'To Do', cards: [{ id: 'c1', title: 'Example card', subtitle: 'Replace with sample-backed data' }] },
+    { id: 'doing', title: 'In Progress', cards: [] },
+    { id: 'done', title: 'Done', cards: [] },
+  ]
+
   return (
     <div>
       <h2 style={{ marginTop: 0 }}>Demo</h2>
