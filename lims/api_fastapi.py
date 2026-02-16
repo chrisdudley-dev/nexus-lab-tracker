@@ -568,10 +568,12 @@ def _write_board(board: dict) -> None:
     tmp.write_text(json.dumps(board, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
 
+@app.get("/api/kanban/board", response_model=KanbanBoardState)
 @app.get("/kanban/board", response_model=KanbanBoardState)
 def kanban_get_board():
     return _read_board()
 
+@app.put("/api/kanban/board", response_model=KanbanBoardState)
 @app.put("/kanban/board", response_model=KanbanBoardState)
 def kanban_put_board(state: KanbanBoardState):
     if not state.columnOrder:
