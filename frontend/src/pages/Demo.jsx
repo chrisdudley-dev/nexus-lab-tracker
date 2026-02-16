@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import SamplesPanel from '../SamplesPanel.jsx'
 import KanbanApp from '../components/kanban/KanbanApp.jsx'
 
@@ -7,6 +7,7 @@ export default function Demo() {
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState(null)
+  const [kstate, dispatch] = useReducer(reducer, undefined, createInitialState)
 
   async function loadHealth() {
     setLoading(true); setErr(null)
