@@ -61,3 +61,6 @@ report/
 
 # Vite cache
 web-react/.vite/
+
+# local/demo data
+/data/kanban.json
