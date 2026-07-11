@@ -95,16 +95,84 @@ Response (200): Content-Type application/gzip
 
 ---
 
-## Planned workflow endpoints (next)
+## Container workflow endpoints
 
 ### POST /container/add
-Request:
-{ "barcode": "TUBE-1", "kind": "tube", "location": "bench-A" }
+Create a container record for downstream sample assignment and workflow tracking.
 
-Response (200): schema nexus_container (v1)
+Request (JSON):
+
+{
+  "barcode": "TUBE-1",
+  "kind": "tube",
+  "location": "bench-A"
+}
+
+Fields:
+- `barcode` (string, required) - unique container barcode / identifier.
+- `kind` (string, required) - container type, such as `tube`.
+- `location` (string, optional) - free-text location label.
+
+Response (200):
+
+{
+  "schema": "nexus_container",
+  "schema_version": 1,
+  "ok": true,
+  "container": {
+    "id": 123,
+    "barcode": "TUBE-1",
+    "kind": "tube",
+    "location": "bench-A",
+    "created_at": "2026-02-05T20:00:00Z",
+    "updated_at": "2026-02-05T20:00:00Z"
+  }
+}
+
+Errors:
+- `400 bad_request` for missing fields, malformed JSON, invalid text values, or other validation failures.
+- `400 bad_request` for duplicate barcodes, with a descriptive detail string.
+- `500 internal_error` if the container store is unavailable or the containers table cannot be used.
+
+Safety notes:
+- Container identifiers are validated before persistence.
+- Path-like or traversal-style values are rejected rather than interpreted as filesystem paths.
+- `location` is treated as plain text metadata only; the server does not use client-supplied directories for container creation.
 
 ### GET /container/list?limit=25
-Response (200): schema nexus_container_list (v1)
+List recently created containers, newest first.
+
+Query params:
+- `limit` (integer, optional, default `25`, max `500`) - number of containers to return.
+
+Response (200):
+
+{
+  "schema": "nexus_container_list",
+  "schema_version": 1,
+  "ok": true,
+  "limit": 25,
+  "count": 1,
+  "containers": [
+    {
+      "id": 123,
+      "barcode": "TUBE-1",
+      "kind": "tube",
+      "location": "bench-A",
+      "created_at": "2026-02-05T20:00:00Z",
+      "updated_at": "2026-02-05T20:00:00Z"
+    }
+  ]
+}
+
+Stable response fields:
+- `limit` echoes the effective server-applied limit after validation and clamping.
+- `count` reports the number of returned containers.
+- `containers` is an array of container objects ordered by descending `id`.
+
+Errors:
+- `400 bad_request` if `limit` is not an integer or is negative.
+- `500 internal_error` if the container store is unavailable or the containers table cannot be used.
 
 ## POST /sample/add
 
