@@ -119,7 +119,7 @@ def _insert_sample_event(
         cols = [r[1] for r in info]  # (cid, name, type, notnull, dflt, pk)
         colset = set(cols)
 
-        ts = now_iso()
+        ts = _now_iso()
         payload: dict[str, object] = {}
 
         # Core identifiers
