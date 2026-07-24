@@ -46,10 +46,143 @@
   overflow-x:auto; line-height:1.35;
 }
 
+.healthToolbar{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-bottom:12px;
+}
+.healthStatusCard{
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:18px;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,252,.98));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+}
+.healthStatusCardLoading{
+  border-color:#cbd5e1;
+}
+.healthStatusCardHealthy{
+  border-color:#86efac;
+  background: linear-gradient(180deg, rgba(236,253,245,.98), rgba(255,255,255,.98));
+}
+.healthStatusCardUnhealthy{
+  border-color:#fbbf24;
+  background: linear-gradient(180deg, rgba(255,251,235,.98), rgba(255,255,255,.98));
+}
+.healthStatusCardError{
+  border-color:#fca5a5;
+  background: linear-gradient(180deg, rgba(254,242,242,.98), rgba(255,255,255,.98));
+}
+.healthStatusCardEmpty{
+  border-style:dashed;
+}
+.healthStatusHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+  margin-bottom:16px;
+  flex-wrap:wrap;
+}
+.healthStatusTitle{
+  font-size:1.1rem;
+  font-weight:700;
+  margin-bottom:4px;
+}
+.healthStatusCopy{
+  color:var(--muted);
+  line-height:1.5;
+  max-width: 60ch;
+}
+.healthStatusPill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:#fff;
+  font-size:.82rem;
+  font-weight:700;
+  white-space:nowrap;
+}
+.healthStatusPillEmpty,
+.healthStatusPillLoading{
+  color:#334155;
+}
+.healthStatusPillHealthy{
+  border-color:#86efac;
+  background:#dcfce7;
+  color:#166534;
+}
+.healthStatusPillUnhealthy{
+  border-color:#fbbf24;
+  background:#fef3c7;
+  color:#92400e;
+}
+.healthStatusPillError{
+  border-color:#fca5a5;
+  background:#fee2e2;
+  color:#991b1b;
+}
+.healthDetailsGrid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap:12px;
+  margin:16px 0;
+}
+.healthDetail{
+  padding:12px 14px;
+  border:1px solid rgba(148,163,184,.35);
+  border-radius:12px;
+  background: rgba(255,255,255,.82);
+}
+.healthDetailLabel{
+  font-size:.78rem;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+.healthDetailValue{
+  font-weight:600;
+  word-break:break-word;
+  line-height:1.45;
+}
+.healthEmptyState{
+  border:1px dashed rgba(148,163,184,.55);
+  border-radius:14px;
+  padding:16px;
+  background: rgba(255,255,255,.75);
+}
+.healthEmptyTitle{
+  font-weight:700;
+  margin-bottom:6px;
+}
+.healthEmptyCopy{
+  margin:0;
+  color:var(--muted);
+  line-height:1.5;
+}
+.healthPayload{
+  background:#0f172a;
+  color:#e2e8f0;
+  padding:16px;
+  border-radius:12px;
+  overflow-x:auto;
+  line-height:1.45;
+  margin:16px 0 0;
+}
+
 /* Responsive baseline */
 @media (max-width: 640px){
   :root{ --pad: 16px; }
   .headerRow{ flex-direction: column; align-items: flex-start; }
   .nav{ width: 100%; }
   .navLink{ padding: 10px 12px; }
+  .healthStatusHeader{
+    flex-direction:column;
+  }
 }
