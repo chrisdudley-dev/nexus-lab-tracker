@@ -1,8 +1,8 @@
 // Minimal API client for the demo UI.
-// - Base URL comes from VITE_API_BASE (or defaults to same-origin).
+// - Base URL comes from VITE_API_BASE (or defaults to the frontend proxy).
 // - Guest session token is stored in localStorage and sent as a header.
 
-const DEFAULT_BASE = ""; // same-origin by default
+const DEFAULT_BASE = "/api";
 
 function getBaseUrl() {
   return (import.meta?.env?.VITE_API_BASE ?? DEFAULT_BASE).replace(/\/+$/, "");
