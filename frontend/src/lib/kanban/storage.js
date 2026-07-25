@@ -47,7 +47,7 @@ export function saveBoard(state) {
 }
 
 export function clearBoard() {
-  try { localStorage.removeItem(KEY) } catch {}
+  try { localStorage.removeItem(KEY) } catch { /* Ignore storage failures. */ }
 }
 
 

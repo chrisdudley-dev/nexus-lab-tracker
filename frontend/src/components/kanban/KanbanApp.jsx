@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useState, useEffect } from 'react'
+import { useReducer, useState, useEffect } from 'react'
 import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCorners } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
