@@ -99,7 +99,6 @@ export default function SamplesPanel() {
   // If a session exists already, load samples once on mount.
   useEffect(() => {
     if (getSession()) loadSamples();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows = useMemo(() => {
