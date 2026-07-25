@@ -2,7 +2,8 @@ import { useReducer, useState, useEffect } from 'react'
 import {
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   useSensor,
   useSensors,
@@ -90,8 +91,14 @@ export default function KanbanApp() {
   }, [state])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 8,
+      },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -198,7 +205,7 @@ export default function KanbanApp() {
           <button onClick={exportBoard} className="btn">Export JSON</button>
           <button onClick={importBoard} className="btn">Import JSON</button>
           <div className="kanbanToolbarCopy">
-            Drag cards between columns • Click to edit in Inspector
+            Hold and drag on touch • Tap or click to edit
           </div>
         </div>
 
