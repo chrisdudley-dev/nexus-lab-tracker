@@ -35,6 +35,9 @@ export default function KanbanCard({ card, onClick }) {
     background: 'transparent',
     textAlign: 'left',
     cursor: 'pointer',
+    touchAction: 'manipulation',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
   }
 
   const handleStyle = {
@@ -44,14 +47,27 @@ export default function KanbanCard({ card, onClick }) {
     background: '#fff',
     cursor: 'grab',
     lineHeight: 1,
+    minWidth: 44,
+    minHeight: 44,
+    display: 'grid',
+    placeItems: 'center',
+    touchAction: 'manipulation',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
   }
+
+  const bodyTouchListeners = listeners?.onTouchStart
+    ? { onTouchStart: listeners.onTouchStart }
+    : {}
 
   return (
     <div ref={setNodeRef} style={cardStyle}>
       <button
         type="button"
+        title="Tap to edit. Hold and drag to move."
         onClick={onClick}
         style={editStyle}
+        {...bodyTouchListeners}
       >
         <div style={{ fontWeight: 650, marginBottom: 6 }}>{card.title}</div>
         {card.subtitle ? (
