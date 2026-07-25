@@ -2,7 +2,10 @@ import KanbanColumn from './KanbanColumn.jsx'
 
 export default function KanbanBoard({ columnOrder, columnsById, cardsById, onCardClick }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columnOrder.length}, minmax(220px, 1fr))`, gap: 12 }}>
+    <div
+      className="kanbanBoard"
+      style={{ gridTemplateColumns: `repeat(${columnOrder.length}, minmax(220px, clamp(220px, 24vw, 280px)))` }}
+    >
       {columnOrder.map((colId) => (
         <KanbanColumn
           key={colId}

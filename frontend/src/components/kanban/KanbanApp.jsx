@@ -1,5 +1,12 @@
 import { useReducer, useState, useEffect } from 'react'
-import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCorners } from '@dnd-kit/core'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import KanbanBoard from './KanbanBoard.jsx'
 import { createInitialState, reducer } from '../../lib/kanban/model.js'
@@ -14,7 +21,7 @@ function Inspector({ card, ioErr, onSave, onDelete, onClose }) {
   }, [card?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+    <div className="kanbanInspector">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginBottom: 10 }}>
         <div style={{ fontWeight: 700 }}>Inspector</div>
         {card ? <button onClick={onClose} className="btn">Close</button> : null}
@@ -83,8 +90,12 @@ export default function KanbanApp() {
   }, [state])
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
   )
 
   const selected = state.selectedCardId ? state.cards[state.selectedCardId] : null
@@ -179,30 +190,32 @@ export default function KanbanApp() {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(240px, 320px)', gap: 12, alignItems: 'start' }}>
-      <div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+    <div className="kanbanWorkspace">
+      <div className="kanbanWorkspaceMain">
+        <div className="kanbanToolbar">
           <button onClick={addCard} className="btn btnPrimary">Add card</button>
           <button onClick={resetBoard} className="btn">Reset board</button>
           <button onClick={exportBoard} className="btn">Export JSON</button>
           <button onClick={importBoard} className="btn">Import JSON</button>
-          <div style={{ opacity: 0.75, fontSize: 13 }}>
+          <div className="kanbanToolbarCopy">
             Drag cards between columns • Click to edit in Inspector
           </div>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragEnd={onDragEnd}
-        >
-          <KanbanBoard
-            columnOrder={state.columnOrder}
-            columnsById={state.columns}
-            cardsById={state.cards}
-            onCardClick={(c) => dispatch({ type: 'select', cardId: c.id })}
-          />
-        </DndContext>
+        <div className="kanbanBoardShell">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragEnd={onDragEnd}
+          >
+            <KanbanBoard
+              columnOrder={state.columnOrder}
+              columnsById={state.columns}
+              cardsById={state.cards}
+              onCardClick={(c) => dispatch({ type: 'select', cardId: c.id })}
+            />
+          </DndContext>
+        </div>
       </div>
 
       <Inspector ioErr={ioErr}

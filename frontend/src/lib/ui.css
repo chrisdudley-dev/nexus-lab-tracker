@@ -46,6 +46,55 @@
   overflow-x:auto; line-height:1.35;
 }
 
+.kanbanWorkspace{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(240px, 320px);
+  gap:12px;
+  align-items:start;
+  min-width:0;
+}
+.kanbanWorkspaceMain{
+  min-width:0;
+  display:grid;
+  gap:12px;
+}
+.kanbanToolbar{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+  min-width:0;
+}
+.kanbanToolbarCopy{
+  opacity:0.75;
+  font-size:13px;
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.kanbanBoardShell{
+  min-width:0;
+  max-width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:4px;
+}
+.kanbanBoard{
+  display:grid;
+  gap:12px;
+  width:max-content;
+  min-width:100%;
+}
+.kanbanInspector{
+  min-width:0;
+  width:100%;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  padding:12px;
+  box-sizing:border-box;
+}
+
 .healthToolbar{
   display:flex;
   gap:12px;
@@ -184,5 +233,14 @@
   .navLink{ padding: 10px 12px; }
   .healthStatusHeader{
     flex-direction:column;
+  }
+}
+
+@media (max-width: 900px){
+  .kanbanWorkspace{
+    grid-template-columns:1fr;
+  }
+  .kanbanBoardShell{
+    margin-right:0;
   }
 }

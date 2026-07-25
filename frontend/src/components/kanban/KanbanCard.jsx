@@ -2,32 +2,74 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 export default function KanbanCard({ card, onClick }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id })
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: card.id })
 
-  const style = {
+  const cardStyle = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.7 : 1,
-    textAlign: 'left',
     width: '100%',
+    boxSizing: 'border-box',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'start',
     borderRadius: 12,
-    padding: 12,
+    padding: 8,
     background: '#fff',
     border: '1px solid #e5e7eb',
+  }
+
+  const editStyle = {
+    minWidth: 0,
+    padding: 4,
+    border: 0,
+    background: 'transparent',
+    textAlign: 'left',
+    cursor: 'pointer',
+  }
+
+  const handleStyle = {
+    padding: '4px 7px',
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    background: '#fff',
     cursor: 'grab',
+    lineHeight: 1,
   }
 
   return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      onClick={onClick}
-      style={style}
-      {...attributes}
-      {...listeners}
-    >
-      <div style={{ fontWeight: 650, marginBottom: 6 }}>{card.title}</div>
-      {card.subtitle ? <div style={{ opacity: 0.75, fontSize: 13 }}>{card.subtitle}</div> : null}
-    </button>
+    <div ref={setNodeRef} style={cardStyle}>
+      <button
+        type="button"
+        onClick={onClick}
+        style={editStyle}
+      >
+        <div style={{ fontWeight: 650, marginBottom: 6 }}>{card.title}</div>
+        {card.subtitle ? (
+          <div style={{ opacity: 0.75, fontSize: 13 }}>{card.subtitle}</div>
+        ) : null}
+      </button>
+
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        aria-label={`Move ${card.title}`}
+        title="Drag or use the keyboard to move this card"
+        style={handleStyle}
+        {...attributes}
+        {...listeners}
+      >
+        <span aria-hidden="true">⋮⋮</span>
+      </button>
+    </div>
   )
 }
